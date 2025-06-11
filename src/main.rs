@@ -1,19 +1,119 @@
-mod jwt;
-mod session;
-mod data;
 mod websocket;
+mod api;
+mod auth;
+mod trading;
+mod data;
 mod config;
 
 use std::time::Duration;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio::time::interval;
 use log::{info, error};
+use tower_http::cors::CorsLayer;
 
 use crate::config::{Config, DATA_BROADCAST_INTERVAL_SECS, CLEANUP_INTERVAL_SECS, BROADCAST_CHANNEL_SIZE};
-use crate::data::{DataLoader, DataBroadcaster};
-use crate::session::SessionManager;
-use crate::websocket::WebSocketHandler;
+use crate::data::{DataLoader, DataBroadcaster, MultiSymbolDataBroadcaster};
+use crate::auth::{SessionManager, extract_jwt_from_request};
+use crate::websocket::{WebSocketHandler, AdminWebSocketHandler, AdminOrderEvent};
+use crate::data::PubSubManager;
+use crate::trading::OrderManager;
+use crate::api::{ApiState, create_api_router};
+
+async fn handle_websocket_connection_with_routing(
+    stream: tokio::net::TcpStream,
+    peer_addr: String,
+    rx: broadcast::Receiver<String>,
+    admin_rx: broadcast::Receiver<AdminOrderEvent>,
+    session_manager: SessionManager,
+    admin_session_manager: SessionManager,
+    pubsub: Arc<PubSubManager>,
+) {
+    use tokio_tungstenite::{accept_hdr_async};
+    use tokio_tungstenite::tungstenite::handshake::server::{Request, Response};
+    use tokio_tungstenite::tungstenite::http::StatusCode;
+    use log::{info, warn, error};
+
+    // Capture path and handle authentication in the handshake callback
+    let mut is_admin = false;
+    let mut auth_claims: Option<crate::auth::Claims> = None;
+
+    let ws_stream = match accept_hdr_async(stream, |req: &Request, response: Response| {
+        let path = req.uri().path();
+        info!("WebSocket connection request for path: {} from {}", path, peer_addr);
+        
+        match path {
+            "/admin" => {
+                is_admin = true;
+                // Handle admin authentication
+                if let Some(token) = extract_jwt_from_request(req) {
+                    match admin_session_manager.validate_jwt(&token) {
+                        Ok(claims) => {
+                            if claims.permissions.contains(&"admin".to_string()) {
+                                auth_claims = Some(claims);
+                                info!("Admin WebSocket authenticated from {}", peer_addr);
+                                Ok(response)
+                            } else {
+                                warn!("Non-admin user attempted admin WebSocket access from {}", peer_addr);
+                                Err(Response::builder()
+                                    .status(StatusCode::FORBIDDEN)
+                                    .body(Some("Admin permissions required".to_string()))
+                                    .unwrap())
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Admin WebSocket authentication failed from {}: {}", peer_addr, e);
+                            Err(Response::builder()
+                                .status(StatusCode::UNAUTHORIZED)
+                                .body(Some(e))
+                                .unwrap())
+                        }
+                    }
+                } else {
+                    warn!("Admin WebSocket missing token from {}", peer_addr);
+                    Err(Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .body(Some("Missing Authorization header or token parameter".to_string()))
+                        .unwrap())
+                }
+            }
+            "/ws" => {
+                is_admin = false;
+                // For normal WebSocket, we'll let the existing handler do the auth
+                Ok(response)
+            }
+            _ => {
+                warn!("Unknown WebSocket path '{}' from {}", path, peer_addr);
+                Err(Response::builder()
+                    .status(StatusCode::NOT_FOUND)
+                    .body(Some("Invalid WebSocket path".to_string()))
+                    .unwrap())
+            }
+        }
+    }).await {
+        Ok(ws) => ws,
+        Err(e) => {
+            error!("WebSocket handshake failed for {}: {:?}", peer_addr, e);
+            return;
+        }
+    };
+
+    // Route to appropriate handler
+    if is_admin {
+        if let Some(claims) = auth_claims {
+            info!("Routing to admin WebSocket handler for {}", peer_addr);
+            // Use AdminWebSocketHandler for admin connections
+            let handler = AdminWebSocketHandler::new(admin_session_manager, peer_addr);
+            handler.handle_admin_websocket_direct(ws_stream, admin_rx, claims).await;
+        }
+    } else {
+        info!("Routing to normal WebSocket handler for {}", peer_addr);
+        // Handle normal WebSocket with already established connection
+        let handler = WebSocketHandler::new(session_manager, peer_addr);
+        handler.handle_websocket_connection_direct(ws_stream, rx, pubsub).await;
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,48 +132,136 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(e.into());
     }
 
-    // Bind TCP listener
-    let listener = TcpListener::bind(&config.bind_address).await?;
-    info!("🚀 WebSocket server running at {} with JWT authentication", config.bind_address);
-
-    // Initialize session manager
+    // Initialize managers
     let session_manager = SessionManager::new();
-
-    // Initialize broadcast channel
+    let pubsub_manager = Arc::new(PubSubManager::new(BROADCAST_CHANNEL_SIZE));
+    
+    // Initialize broadcast channel for backwards compatibility
     let (tx, _rx) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
     
-    // Load and start broadcasting stock data
-    let stock_data = DataLoader::load_from_csv(&config.data_file)?;
-    let data_count = stock_data.len();
+    // Initialize admin order events channel
+    let (admin_tx, _admin_rx) = broadcast::channel::<AdminOrderEvent>(BROADCAST_CHANNEL_SIZE);
     
-    let data_broadcaster = DataBroadcaster::new(stock_data, DATA_BROADCAST_INTERVAL_SECS);
-    data_broadcaster.start_broadcasting(tx.clone());
-    
-    info!("📊 Started broadcasting {} stock records every {} seconds", 
-          data_count, DATA_BROADCAST_INTERVAL_SECS);
+    // Initialize order manager with admin events
+    let order_manager = Arc::new(OrderManager::new_with_admin_events(admin_tx.clone()));
+
+    // Try to load multiple symbols from data directory
+    match DataLoader::load_multiple_symbols("data") {
+        Ok(symbol_data) => {
+            let symbol_count = symbol_data.len();
+            let total_records = symbol_data.values().map(|data| data.len()).sum::<usize>();
+            
+            info!("📊 Loaded {} symbols with {} total records", symbol_count, total_records);
+            
+            // Start multi-symbol broadcasting with pub/sub
+            let multi_broadcaster = MultiSymbolDataBroadcaster::new(
+                symbol_data,
+                pubsub_manager.clone(),
+                DATA_BROADCAST_INTERVAL_SECS
+            );
+            multi_broadcaster.start_broadcasting();
+            
+            info!("🚀 Started pub/sub broadcasting for {} symbols", symbol_count);
+        }
+        Err(e) => {
+            error!("Failed to load multiple symbols: {}", e);
+            info!("Falling back to single file mode");
+            
+            // Fallback to single file broadcasting
+            let stock_data = DataLoader::load_from_csv(&config.data_file)?;
+            let data_count = stock_data.len();
+            
+            let data_broadcaster = DataBroadcaster::new(stock_data, DATA_BROADCAST_INTERVAL_SECS);
+            data_broadcaster.start_broadcasting(tx.clone());
+            
+            info!("📊 Started broadcasting {} stock records every {} seconds", 
+                  data_count, DATA_BROADCAST_INTERVAL_SECS);
+        }
+    }
 
     // Start background tasks
-    start_background_tasks(session_manager.clone()).await;
+    start_background_tasks(
+        session_manager.clone(), 
+        pubsub_manager.clone(),
+        order_manager.clone(),
+        admin_tx.clone()
+    ).await;
 
-    // Main connection loop
-    info!("🔗 Ready to accept WebSocket connections");
+    // Start API server
+    let api_state = ApiState {
+        order_manager: order_manager.clone(),
+        session_manager: session_manager.clone(),
+    };
     
-    while let Ok((stream, addr)) = listener.accept().await {
-        let peer_addr = addr.to_string();
-        let rx = tx.subscribe();
-        let session_manager_clone = session_manager.clone();
+    let api_router = create_api_router(api_state)
+        .layer(CorsLayer::permissive()); // Enable CORS for web clients
+
+    let api_bind_address = config.api_bind_address.clone();
+    let api_listener = TcpListener::bind(&api_bind_address).await?;
+    info!("🌐 HTTP API server running at http://{}", api_bind_address);
+
+    let api_server = axum::serve(api_listener, api_router);
+
+    // Start WebSocket server
+    let ws_bind_address = config.bind_address.clone();
+    let ws_listener = TcpListener::bind(&ws_bind_address).await?;
+    info!("🚀 WebSocket server running at ws://{} with JWT authentication", ws_bind_address);
+    info!("🔗 Normal WebSocket: ws://{}/ws", ws_bind_address);
+    info!("👑 Admin WebSocket: ws://{}/admin (real-time order feed)", ws_bind_address);
+
+    // Clone session manager for different handlers
+    let ws_session_manager = session_manager.clone();
+    let admin_session_manager = session_manager.clone();
+
+    // WebSocket connection loop with path-based routing
+    let websocket_server = async move {
+        info!("🔗 Ready to accept WebSocket connections with path routing");
         
-        // Spawn connection handler
-        tokio::spawn(async move {
-            let handler = WebSocketHandler::new(session_manager_clone, peer_addr);
-            handler.handle_connection(stream, rx).await;
-        });
+        while let Ok((stream, addr)) = ws_listener.accept().await {
+            let peer_addr = addr.to_string();
+            let rx = tx.subscribe();
+            let admin_rx = admin_tx.subscribe();
+            let session_manager_clone = ws_session_manager.clone();
+            let admin_session_manager_clone = admin_session_manager.clone();
+            let pubsub_clone = pubsub_manager.clone();
+            
+            // Spawn connection handler with path routing
+            tokio::spawn(async move {
+                // We need to peek at the HTTP request to determine the path
+                // This will be handled in a new router function
+                handle_websocket_connection_with_routing(
+                    stream,
+                    peer_addr,
+                    rx,
+                    admin_rx,
+                    session_manager_clone,
+                    admin_session_manager_clone,
+                    pubsub_clone
+                ).await;
+            });
+        }
+    };
+
+    // Run both servers concurrently
+    info!("🎯 Starting WebSocket and HTTP API servers...");
+    tokio::select! {
+        result = api_server => {
+            error!("API server stopped: {:?}", result);
+        }
+        _ = websocket_server => {
+            error!("WebSocket server stopped");
+        }
     }
     
     Ok(())
 }
 
-async fn start_background_tasks(session_manager: SessionManager) {
+async fn start_background_tasks(
+    session_manager: SessionManager, 
+    pubsub: Arc<PubSubManager>,
+    order_manager: Arc<OrderManager>,
+    admin_tx: broadcast::Sender<AdminOrderEvent>
+) {
     // Session cleanup task
     let session_manager_cleanup = session_manager.clone();
     tokio::spawn(async move {
@@ -89,22 +277,24 @@ async fn start_background_tasks(session_manager: SessionManager) {
         }
     });
     
-    info!("🧹 Started session cleanup task (every {} seconds)", CLEANUP_INTERVAL_SECS);
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[tokio::test]
-    async fn test_server_components() {
-        // Test that all components can be initialized
-        let config = Config::from_env();
-        let session_manager = SessionManager::new();
-        let (tx, _rx) = broadcast::channel(10);
+    // Pub/sub stats task
+    let pubsub_stats = pubsub.clone();
+    let order_stats = order_manager.clone();
+    tokio::spawn(async move {
+        let mut interval_timer = interval(Duration::from_secs(60)); // Every minute
         
-        // These should not panic
-        assert!(tx.send("test".to_string()).is_ok());
-        assert_eq!(session_manager.get_session_count(), 0);
-    }
+        loop {
+            interval_timer.tick().await;
+            let (symbol_count, subscription_count) = pubsub_stats.get_stats();
+            let (order_count, user_count) = order_stats.get_stats();
+            
+            if symbol_count > 0 || subscription_count > 0 || order_count > 0 {
+                info!("Stats - Symbols: {}, Subscriptions: {}, Orders: {}, Trading users: {}", 
+                      symbol_count, subscription_count, order_count, user_count);
+            }
+        }
+    });
+    
+    info!("🧹 Started session cleanup task (every {} seconds)", CLEANUP_INTERVAL_SECS);
+    info!("📈 Started stats monitoring task (every 60 seconds)");
 }

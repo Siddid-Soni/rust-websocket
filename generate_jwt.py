@@ -8,7 +8,7 @@ import jwt
 import time
 import uuid
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # JWT Configuration (must match server)
 JWT_SECRET = "your-secret-key-change-in-production"
@@ -19,7 +19,7 @@ def generate_jwt_token(user_id, permissions=None, expires_in_minutes=60):
     if permissions is None:
         permissions = ["read_data", "websocket_connect"]
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     exp = now + timedelta(minutes=expires_in_minutes)
     
     # JWT Claims
@@ -44,7 +44,7 @@ def generate_test_tokens():
     print("=" * 50)
     
     # Test Token 1: Valid user with standard permissions
-    token1, claims1 = generate_jwt_token("user123", ["read_data", "websocket_connect"], 60)
+    token1, claims1 = generate_jwt_token("user123", ["read_data", "websocket_connect"], 290000)
     print(f"\n1. Valid Token (60 min expiry) - User: {claims1['user_id']}")
     print(f"   JWT ID: {claims1['jti']}")
     print(f"   Token: {token1}")
@@ -69,7 +69,7 @@ def generate_test_tokens():
     print(f"   Status: EXPIRED")
     
     # Test Token 5: Admin user with extended permissions
-    token5, claims5 = generate_jwt_token("admin", ["read_data", "websocket_connect", "admin"], 120)
+    token5, claims5 = generate_jwt_token("admin", ["read_data", "websocket_connect", "admin"], 1000000)
     print(f"\n5. Admin Token (120 min expiry) - User: {claims5['user_id']}")
     print(f"   JWT ID: {claims5['jti']}")
     print(f"   Token: {token5}")

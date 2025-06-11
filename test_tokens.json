@@ -1,0 +1,72 @@
+{
+  "valid_user1": {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwianRpIjoiMTNiYWJlN2ItYWI1NC00NzE1LTkyMjctYWY3OWJmYTU2YmRkIiwiZXhwIjoxNzY3MDU2MzI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyMTIzIiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIiwid2Vic29ja2V0X2Nvbm5lY3QiXX0.aeG7R56atD9trvwreIMca0UVnBHFJQeON1kMpjVtz3s",
+    "claims": {
+      "sub": "user123",
+      "jti": "13babe7b-ab54-4715-9227-af79bfa56bdd",
+      "exp": 1767056327,
+      "iat": 1749656327,
+      "user_id": "user123",
+      "permissions": [
+        "read_data",
+        "websocket_connect"
+      ]
+    }
+  },
+  "valid_user2": {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyNDU2IiwianRpIjoiZGYzYTA0ZGQtMTM4Yy00NzQ3LWE3OTEtMWY0Mjc3M2U4MWJjIiwiZXhwIjoxNzQ5NjU4MTI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyNDU2IiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIiwid2Vic29ja2V0X2Nvbm5lY3QiXX0.1W3eJPYrcOBZDH8nfB2iRiqnIIuaHITSExLA_J09NNY",
+    "claims": {
+      "sub": "user456",
+      "jti": "df3a04dd-138c-4747-a791-1f42773e81bc",
+      "exp": 1749658127,
+      "iat": 1749656327,
+      "user_id": "user456",
+      "permissions": [
+        "read_data",
+        "websocket_connect"
+      ]
+    }
+  },
+  "same_user_different_session": {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwianRpIjoiOWMzNTU0ODMtYmU5Ny00OGM2LTgyYmMtZjNiMTliZjlmNDIxIiwiZXhwIjoxNzQ5NjU5MDI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyMTIzIiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIiwid2Vic29ja2V0X2Nvbm5lY3QiXX0.gpI35fheReD1FeL6qdYrqkhUbD9LbomfpUMTjUe317w",
+    "claims": {
+      "sub": "user123",
+      "jti": "9c355483-be97-48c6-82bc-f3b19bf9f421",
+      "exp": 1749659027,
+      "iat": 1749656327,
+      "user_id": "user123",
+      "permissions": [
+        "read_data",
+        "websocket_connect"
+      ]
+    }
+  },
+  "expired_token": {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyNzg5IiwianRpIjoiM2RjY2MxMWYtNjMyMS00NmY3LWI4YWItOWUyNTBmNzdhZDJhIiwiZXhwIjoxNzQ5NjU2MDI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyNzg5IiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIl19.8uahIqOkWj2jLAeYXm2ktUpUB5LU9rwPY5RYoq20O-A",
+    "claims": {
+      "sub": "user789",
+      "jti": "3dccc11f-6321-46f7-b8ab-9e250f77ad2a",
+      "exp": 1749656027,
+      "iat": 1749656327,
+      "user_id": "user789",
+      "permissions": [
+        "read_data"
+      ]
+    }
+  },
+  "admin_user": {
+    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImp0aSI6ImZhMzdmMTY2LWZiZTEtNGRmZC05YmYxLTMzZTljYThjNjc4ZSIsImV4cCI6MTgwOTY1NjMyNywiaWF0IjoxNzQ5NjU2MzI3LCJ1c2VyX2lkIjoiYWRtaW4iLCJwZXJtaXNzaW9ucyI6WyJyZWFkX2RhdGEiLCJ3ZWJzb2NrZXRfY29ubmVjdCIsImFkbWluIl19.MifvUqnRn0-t5RXKWNSAqyN32nvNt7REYlenl4QNfDs",
+    "claims": {
+      "sub": "admin",
+      "jti": "fa37f166-fbe1-4dfd-9bf1-33e9ca8c678e",
+      "exp": 1809656327,
+      "iat": 1749656327,
+      "user_id": "admin",
+      "permissions": [
+        "read_data",
+        "websocket_connect",
+        "admin"
+      ]
+    }
+  }
+}
