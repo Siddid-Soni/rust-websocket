@@ -27,9 +27,8 @@ def main():
     
     # Method 1: Create client with explicit parameters (similar to breeze)
     client = NSEClient(
-        ws_uri="ws://localhost:8080/ws",
-        api_uri="http://localhost:3000",
-        token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwianRpIjoiMTNiYWJlN2ItYWI1NC00NzE1LTkyMjctYWY3OWJmYTU2YmRkIiwiZXhwIjoxNzY3MDU2MzI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyMTIzIiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIiwid2Vic29ja2V0X2Nvbm5lY3QiXX0.aeG7R56atD9trvwreIMca0UVnBHFJQeON1kMpjVtz3s"  # Replace with your token
+        uri="localhost",
+        token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImp0aSI6IjgyN2MyY2RhLTZjNzktNDljMi05ZTRlLWI1ZjJmOTg0MzJiMCIsImV4cCI6MTgxMDQyNjQ3NSwiaWF0IjoxNzUwNDI2NDc1LCJ1c2VyX2lkIjoiYWRtaW4iLCJwZXJtaXNzaW9ucyI6WyJyZWFkX2RhdGEiLCJ3ZWJzb2NrZXRfY29ubmVjdCIsImFkbWluIl19.BNhcBJB8ytYbOrhWqk4EjTPHtwomZWnP86kpcMc2wy4"  # Replace with your token
     )
     
     # Method 2: Create client with convenience function (auto-loads token)

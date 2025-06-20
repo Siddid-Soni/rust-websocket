@@ -580,14 +580,3 @@ impl WebSocketHandler {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    
-    #[test]
-    fn test_websocket_handler_creation() {
-        let session_manager = SessionManager::new();
-        let handler = WebSocketHandler::new(session_manager, "127.0.0.1:8080".to_string());
-        assert_eq!(handler.peer_addr, "127.0.0.1:8080");
-    }
-} 

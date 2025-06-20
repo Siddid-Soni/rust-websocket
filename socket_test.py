@@ -14,9 +14,9 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 client = NSEClient(
-        ws_uri="ws://localhost:8080/ws",
-        api_uri="http://localhost:3000",
-        token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyMTIzIiwianRpIjoiMTNiYWJlN2ItYWI1NC00NzE1LTkyMjctYWY3OWJmYTU2YmRkIiwiZXhwIjoxNzY3MDU2MzI3LCJpYXQiOjE3NDk2NTYzMjcsInVzZXJfaWQiOiJ1c2VyMTIzIiwicGVybWlzc2lvbnMiOlsicmVhZF9kYXRhIiwid2Vic29ja2V0X2Nvbm5lY3QiXX0.aeG7R56atD9trvwreIMca0UVnBHFJQeON1kMpjVtz3s"  # Replace with your token
+        ws_uri="ws://157.157.221.30:46362/ws",
+        api_uri="http://157.157.221.30:46363",
+        token="eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImp0aSI6ImU0YWQyOWU2LWRiOGQtNDZiNC1hZTc3LTEyMzUzNTkzNzkwNCIsImV4cCI6MTgxMDQyODcwOSwiaWF0IjoxNzUwNDI4NzA5LCJ1c2VyX2lkIjoiYWRtaW4iLCJwZXJtaXNzaW9ucyI6WyJyZWFkX2RhdGEiLCJ3ZWJzb2NrZXRfY29ubmVjdCIsImFkbWluIl19.hjg8U1p3pp2Dyk7mrU8kcVI0sgu9Tm50mnrj4yhHNuM"  # Replace with your token
 )
 
 q = deque(maxlen=5)

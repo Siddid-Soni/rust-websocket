@@ -2,12 +2,12 @@ use std::env;
 use log::info;
 
 // Server Configuration
-pub const DEFAULT_BIND_ADDRESS: &str = "127.0.0.1:8080";
+pub const DEFAULT_BIND_ADDRESS: &str = "0.0.0.0:8080";
 pub const DATA_BROADCAST_INTERVAL_SECS: u64 = 1;
 pub const CLEANUP_INTERVAL_SECS: u64 = 60;
 
 // JWT Configuration
-pub const DEFAULT_JWT_SECRET: &str = "your-secret-key-change-in-production";
+pub const DEFAULT_JWT_SECRET: &str = "3cf7753b87ed1a9e7508f9c928292bcb5fbc6441eaf587bbd8da7f17b77f4b61";
 
 // Data Configuration
 pub const DEFAULT_DATA_FILE: &str = "./data/NIFTY.csv";
@@ -28,13 +28,13 @@ impl Config {
     pub fn from_env() -> Self {
         Self {
             jwt_secret: env::var("JWT_SECRET")
-                .unwrap_or_else(|_| "your-secret-key-change-in-production".to_string()),
+                .unwrap_or_else(|_| DEFAULT_JWT_SECRET.to_string()),
             log_level: env::var("RUST_LOG")
                 .unwrap_or_else(|_| "info".to_string()),
             bind_address: env::var("BIND_ADDRESS")
-                .unwrap_or_else(|_| "127.0.0.1:8080".to_string()),
+                .unwrap_or_else(|_| DEFAULT_BIND_ADDRESS.to_string()),
             api_bind_address: env::var("API_BIND_ADDRESS")
-                .unwrap_or_else(|_| "127.0.0.1:3000".to_string()),
+                .unwrap_or_else(|_| "0.0.0.0:3000".to_string()),
             data_file: env::var("DATA_FILE")
                 .unwrap_or_else(|_| "./data/NIFTY.csv".to_string()),
         }

@@ -51,10 +51,10 @@ pub struct SessionManager {
 }
 
 impl SessionManager {
-    pub fn new() -> Self {
+    pub fn new(jwt_secret: &str) -> Self {
         Self {
             active_sessions: Arc::new(Mutex::new(HashMap::new())),
-            jwt_validator: Arc::new(JwtValidator::new()),
+            jwt_validator: Arc::new(JwtValidator::new(jwt_secret)),
         }
     }
     
@@ -156,7 +156,7 @@ mod tests {
     
     #[test]
     fn test_session_manager_creation() {
-        let manager = SessionManager::new();
+        let manager = SessionManager::new("test-secret");
         assert_eq!(manager.get_session_count(), 0);
     }
     

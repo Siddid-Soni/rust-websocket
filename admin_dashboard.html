@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NSE Socket Admin Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .login-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        }
+
+        .login-form {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            border: 1px solid #dee2e6;
+            text-align: center;
+            min-width: 400px;
+        }
+
+        .login-form h1 {
+            margin-bottom: 30px;
+            color: #2c3e50;
+            font-size: 2.2em;
+            font-weight: 600;
+        }
+
+        .admin-badge {
+            background: #495057;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.7em;
+            font-weight: 500;
+            display: inline-block;
+            margin-left: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+            font-family: 'Courier New', monospace;
+            resize: vertical;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #495057;
+            box-shadow: 0 0 0 3px rgba(73, 80, 87, 0.1);
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .btn-primary {
+            background: #495057;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #343a40;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(73, 80, 87, 0.3);
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #212529;
+        }
+
+        .btn-warning:hover {
+            background: #e0a800;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .btn-info:hover {
+            background: #138496;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 12px;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #f5c6cb;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            border: 1px solid #c3e6cb;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .dashboard {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #2c3e50;
+            font-size: 2.2em;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .user-info {
+            text-align: right;
+        }
+
+        .user-info .user-name {
+            font-size: 1.1em;
+            font-weight: 500;
+            color: #495057;
+            margin-bottom: 8px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 8px;
+            padding: 24px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #dee2e6;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        }
+
+        .stat-value {
+            font-size: 2.4em;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9em;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .stat-card.broadcast .stat-value { color: #495057; }
+        .stat-card.symbols .stat-value { color: #17a2b8; }
+        .stat-card.records .stat-value { color: #6f42c1; }
+        .stat-card.subscribers .stat-value { color: #28a745; }
+        .stat-card.orders .stat-value { color: #fd7e14; }
+
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 25px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+            border: 1px solid #dee2e6;
+        }
+
+        .panel-title {
+            font-size: 1.6em;
+            font-weight: 600;
+            margin-bottom: 24px;
+            color: #2c3e50;
+            border-bottom: 2px solid #495057;
+            padding-bottom: 12px;
+        }
+
+        .broadcast-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+        }
+
+        .status-stopped { background: #dc3545; }
+        .status-running { background: #28a745; animation: pulse 2s infinite; }
+        .status-paused { background: #ffc107; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-display {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 6px;
+            margin-bottom: 24px;
+            border-left: 4px solid #495057;
+            border: 1px solid #e9ecef;
+        }
+
+        .status-display h4 {
+            margin-bottom: 12px;
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        .controls-grid {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+
+        .table-container {
+            max-height: 500px;
+            overflow-y: auto;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .table th,
+        .table td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .table tbody tr:hover {
+            background: #f8f9fa;
+        }
+
+        .order-status {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 500;
+            text-transform: uppercase;
+        }
+
+        .status-pending { background: #fff3cd; color: #856404; }
+        .status-filled { background: #d4edda; color: #155724; }
+        .status-cancelled { background: #f8d7da; color: #721c24; }
+
+        .side-buy { background: #d4edda; color: #155724; }
+        .side-sell { background: #f8d7da; color: #721c24; }
+
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .filter-group label {
+            font-size: 0.9em;
+            color: #6c757d;
+            font-weight: 500;
+        }
+
+        .filter-group select,
+        .filter-group input {
+            padding: 8px 12px;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .logs {
+            background: #f8f9fa;
+            color: #333;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            border-radius: 6px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #dee2e6;
+        }
+
+        .log-entry {
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            border-left: 4px solid transparent;
+        }
+
+        .log-error {
+            color: #dc3545;
+            border-left: 3px solid #dc3545;
+        }
+
+        .log-warning {
+            color: #ffc107;
+            border-left: 3px solid #ffc107;
+        }
+
+        .log-success {
+            color: #28a745;
+            border-left: 3px solid #28a745;
+        }
+
+        .log-info {
+            color: #17a2b8;
+            border-left: 3px solid #17a2b8;
+        }
+
+        .refresh-btn {
+            margin-left: auto;
+        }
+
+        .auto-refresh {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .auto-refresh input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #495057;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 25px;
+            background: white;
+            border-radius: 6px 6px 0 0;
+        }
+
+        .tab {
+            padding: 16px 28px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s;
+            font-weight: 500;
+            color: #6c757d;
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .tab:hover {
+            color: #495057;
+            background: #f8f9fa;
+        }
+
+        .tab.active {
+            border-bottom-color: #495057;
+            color: #495057;
+            background: white;
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Real-time order highlighting */
+        .highlight-update {
+            background-color: #fff3cd !important;
+            border-left: 4px solid #ffc107 !important;
+            animation: pulseUpdate 0.5s ease-in-out;
+        }
+
+        .highlight-new {
+            background-color: #d1ecf1 !important;
+            border-left: 4px solid #17a2b8 !important;
+            animation: pulseNew 0.5s ease-in-out;
+        }
+
+        @keyframes pulseUpdate {
+            0% { background-color: #fff3cd; }
+            50% { background-color: #ffeaa7; }
+            100% { background-color: #fff3cd; }
+        }
+
+        @keyframes pulseNew {
+            0% { background-color: #d1ecf1; }
+            50% { background-color: #a8e6cf; }
+            100% { background-color: #d1ecf1; }
+        }
+
+        /* WebSocket status indicator */
+        .ws-status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 500;
+            margin-left: 10px;
+        }
+
+        .ws-status.connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .ws-status.disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .ws-status.error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .realtime-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid #28a745;
+            font-size: 0.9em;
+        }
+
+        .realtime-indicator.disconnected {
+            border-left-color: #dc3545;
+        }
+
+        .orders-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .refresh-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- Login Form -->
+    <div id="loginContainer" class="login-container">
+        <div class="login-form">
+            <h1>Admin Access<span class="admin-badge">TOKEN</span></h1>
+            <div id="loginError" class="error-message hidden"></div>
+            <div id="loginSuccess" class="success-message hidden"></div>
+            
+            <form id="loginForm">
+                <div class="form-group">
+                    <label for="apiUrl">API Server URL</label>
+                    <input type="text" id="apiUrl" name="apiUrl" required placeholder="http://localhost:3000" value="http://localhost:3000">
+                    <small style="color: #6c757d; font-size: 0.8em; margin-top: 5px; display: block;">
+                        REST API endpoint (e.g., http://localhost:3000, https://api.yourserver.com)
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label for="wsUrl">WebSocket Server URL</label>
+                    <input type="text" id="wsUrl" name="wsUrl" required placeholder="ws://localhost:8080" value="ws://localhost:8080">
+                    <small style="color: #6c757d; font-size: 0.8em; margin-top: 5px; display: block;">
+                        WebSocket endpoint (e.g., ws://localhost:8080, wss://ws.yourserver.com)
+                    </small>
+                </div>
+                <div class="form-group">
+                    <label for="token">JWT Token</label>
+                    <textarea id="token" name="token" required placeholder="Paste your JWT token here..." rows="4"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <span id="loginText">Access Dashboard</span>
+                    <div id="loginSpinner" class="spinner hidden" style="width: 20px; height: 20px; display: none;"></div>
+                </button>
+            </form>
+            
+            <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #dee2e6;">
+                <p style="font-size: 0.9em; color: #6c757d; margin-bottom: 10px;">
+                    Need a token? Get one from the API:
+                </p>
+                <code id="tokenCommand" style="background: #f8f9fa; padding: 8px; border-radius: 4px; font-size: 0.8em; display: block; border: 1px solid #e9ecef;">
+                    curl -X POST http://localhost:3000/api/login -H "Content-Type: application/json" -d '{"username": "admin"}'
+                </code>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Dashboard -->
+    <div id="dashboard" class="dashboard hidden">
+        <!-- Header -->
+        <div class="header">
+            <h1>NSE Socket Administration Panel</h1>
+            <div class="user-info">
+                <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 3px;">
+                    API: <span id="currentApiUrl" style="font-weight: 600; color: #495057;">http://localhost:3000</span>
+                </div>
+                <div style="font-size: 0.85em; color: #6c757d; margin-bottom: 8px;">
+                    WS: <span id="currentWsUrl" style="font-weight: 600; color: #495057;">ws://localhost:8080</span>
+                </div>
+                <div class="user-name">Administrator: <span id="currentUser">Admin</span></div>
+                <button class="btn btn-secondary btn-sm" onclick="logout()">Sign Out</button>
+            </div>
+        </div>
+
+        <!-- Statistics -->
+        <div class="stats-grid">
+            <div class="stat-card broadcast">
+                <div class="stat-value" id="broadcastStatus">STOPPED</div>
+                <div class="stat-label">Broadcasting Status</div>
+            </div>
+            <div class="stat-card symbols">
+                <div class="stat-value" id="symbolCount">0</div>
+                <div class="stat-label">Active Symbols</div>
+            </div>
+            <div class="stat-card records">
+                <div class="stat-value" id="totalRecords">0</div>
+                <div class="stat-label">Total Records</div>
+            </div>
+            <div class="stat-card subscribers">
+                <div class="stat-value" id="subscriberCount">0</div>
+                <div class="stat-label">WebSocket Subscribers</div>
+            </div>
+            <div class="stat-card orders">
+                <div class="stat-value" id="totalOrders">0</div>
+                <div class="stat-label">Total Orders</div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('broadcasting')">Broadcasting Control</div>
+            <div class="tab" onclick="switchTab('orders')">Order Management</div>
+            <div class="tab" onclick="switchTab('monitoring')">System Monitoring</div>
+        </div>
+
+        <!-- Broadcasting Control Panel -->
+        <div id="broadcastingTab" class="tab-content active">
+            <div class="panel">
+                <h2 class="panel-title">Broadcasting Control Center</h2>
+                
+                <div class="status-display">
+                    <h4><span class="status-indicator" id="statusIndicator"></span>Current Status: <span id="statusText">Checking...</span></h4>
+                    <p id="statusDetails">Loading status information...</p>
+                </div>
+
+                <div class="broadcast-controls">
+                    <button class="btn btn-success" onclick="startBroadcast()" id="startBtn">Start Broadcasting</button>
+                    <button class="btn btn-warning" onclick="pauseBroadcast()" id="pauseBtn" disabled>Pause Broadcasting</button>
+                    <button class="btn btn-info" onclick="resumeBroadcast()" id="resumeBtn" disabled>Resume Broadcasting</button>
+                    <button class="btn btn-danger" onclick="stopBroadcast()" id="stopBtn" disabled>Stop Broadcasting</button>
+                    <button class="btn btn-secondary" onclick="restartBroadcast()" id="restartBtn" disabled>Restart Broadcasting</button>
+                    <button class="btn btn-info btn-sm" onclick="refreshStatus()">Refresh Status</button>
+                </div>
+
+                <div class="auto-refresh">
+                    <input type="checkbox" id="autoRefresh" checked>
+                    <label for="autoRefresh">Auto-refresh status every 5 seconds</label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Order Management Panel -->
+        <div id="ordersTab" class="tab-content">
+            <div class="panel">
+                <div class="orders-header">
+                    <h2 class="panel-title">Order Management System</h2>
+                    <div class="refresh-controls">
+                        <span id="realtimeStatus" class="ws-status disconnected">Real-time: DISCONNECTED</span>
+                        <button class="btn btn-info btn-sm" onclick="loadOrders()">Refresh Orders</button>
+                        <button class="btn btn-secondary btn-sm" onclick="toggleRealTimeUpdates()">Toggle Real-time</button>
+                    </div>
+                </div>
+                
+                <div class="filters">
+                    <div class="filter-group">
+                        <label>Symbol</label>
+                        <select id="symbolFilter">
+                            <option value="">All Symbols</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Status</label>
+                        <select id="statusFilter">
+                            <option value="">All Status</option>
+                            <option value="pending">Pending</option>
+                            <option value="filled">Filled</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>User</label>
+                        <select id="userFilter">
+                            <option value="">All Users</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label>Search</label>
+                        <input type="text" id="searchFilter" placeholder="Search orders...">
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Order ID</th>
+                                <th>User</th>
+                                <th>Symbol</th>
+                                <th>Side</th>
+                                <th>Type</th>
+                                <th>Quantity</th>
+                                <th>Filled</th>
+                                <th>Price</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ordersTableBody">
+                            <tr>
+                                <td colspan="11" class="loading">
+                                    <div class="spinner"></div>
+                                    Loading orders...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- System Monitoring Panel -->
+        <div id="monitoringTab" class="tab-content">
+            <div class="panel">
+                <h2 class="panel-title">System Monitoring Console</h2>
+                
+                <div class="controls-grid">
+                    <button class="btn btn-info btn-sm" onclick="loadSystemStats()">Refresh Statistics</button>
+                    <button class="btn btn-secondary btn-sm" onclick="clearLogs()">Clear Activity Log</button>
+                </div>
+
+                <h3 style="margin-bottom: 15px; color: #495057; font-weight: 600;">System Activity Log</h3>
+                <div class="logs" id="systemLogs">
+                    <div style="text-align: center; padding: 40px; color: #6c757d;">
+                        <h4>No Activity Logs</h4>
+                        <p>System activity will appear here as operations are performed</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentUser = null;
+        let authToken = null;
+        let autoRefreshInterval = null;
+        let allOrders = [];
+        let adminWebSocket = null;
+        let wsReconnectAttempts = 0;
+        let maxReconnectAttempts = 5;
+        let reconnectDelay = 5000;
+        let isWebSocketEnabled = true;
+        let apiUrl = 'http://localhost:3000'; // Dynamic API URL
+        let wsUrl = 'ws://localhost:8080'; // Dynamic WebSocket URL
+        let API_BASE = '';
+        let WS_BASE = '';
+
+        // Initialize URLs based on user input
+        function updateServerUrls(apiUrlInput, wsUrlInput) {
+            apiUrl = apiUrlInput;
+            wsUrl = wsUrlInput;
+            API_BASE = `${apiUrl}/api`;
+            WS_BASE = wsUrl;
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if already logged in
+            const savedToken = localStorage.getItem('adminToken');
+            const savedUser = localStorage.getItem('adminUser');
+            const savedApiUrl = localStorage.getItem('adminApiUrl');
+            const savedWsUrl = localStorage.getItem('adminWsUrl');
+            
+            if (savedToken && savedUser && savedApiUrl && savedWsUrl) {
+                authToken = savedToken;
+                currentUser = savedUser;
+                updateServerUrls(savedApiUrl, savedWsUrl);
+                showDashboard();
+            }
+
+            // Setup form handlers
+            document.getElementById('loginForm').addEventListener('submit', handleLogin);
+            
+            // Setup filters
+            ['symbolFilter', 'statusFilter', 'userFilter', 'searchFilter'].forEach(id => {
+                document.getElementById(id).addEventListener('change', filterOrders);
+            });
+            document.getElementById('searchFilter').addEventListener('input', filterOrders);
+            
+            // Update server URL input handlers
+            document.getElementById('apiUrl').addEventListener('input', updateTokenCommand);
+            document.getElementById('wsUrl').addEventListener('input', updateTokenCommand);
+            updateTokenCommand(); // Initial update
+        });
+
+        function updateTokenCommand() {
+            const apiUrl = document.getElementById('apiUrl').value.trim() || 'http://localhost:3000';
+            const command = `curl -X POST ${apiUrl}/api/login -H "Content-Type: application/json" -d '{"username": "admin"}'`;
+            document.getElementById('tokenCommand').textContent = command;
+        }
+
+        // Authentication
+        async function handleLogin(e) {
+            e.preventDefault();
+            
+            const apiUrl = document.getElementById('apiUrl').value.trim();
+            const wsUrl = document.getElementById('wsUrl').value.trim();
+            const token = document.getElementById('token').value.trim();
+            const loginBtn = e.target.querySelector('button');
+            const loginText = document.getElementById('loginText');
+            const loginSpinner = document.getElementById('loginSpinner');
+            
+            if (!apiUrl || !wsUrl || !token) {
+                showError('Please enter both API URL and WebSocket URL and JWT token');
+                return;
+            }
+            
+            // Show loading
+            loginBtn.disabled = true;
+            loginText.style.display = 'none';
+            loginSpinner.style.display = 'inline-block';
+            
+            try {
+                // Update server URLs with user input
+                updateServerUrls(apiUrl, wsUrl);
+                
+                // Validate token by making a test API call
+                const response = await fetch(`${API_BASE}/broadcast-status`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        // Token is valid and user has admin permissions
+                        authToken = token;
+                        
+                        // Extract user info from token (basic decode for display)
+                        try {
+                            const payload = JSON.parse(atob(token.split('.')[1]));
+                            currentUser = payload.sub || payload.user_id || 'Admin';
+                        } catch (e) {
+                            currentUser = 'Admin';
+                        }
+                        
+                        // Save to localStorage
+                        localStorage.setItem('adminToken', authToken);
+                        localStorage.setItem('adminUser', currentUser);
+                        localStorage.setItem('adminApiUrl', apiUrl);
+                        localStorage.setItem('adminWsUrl', wsUrl);
+                        
+                        showSuccess('Token validated successfully. Accessing dashboard...');
+                        
+                        setTimeout(() => {
+                            showDashboard();
+                        }, 1000);
+                    } else {
+                        showError('Invalid token or insufficient permissions');
+                    }
+                } else if (response.status === 401) {
+                    showError('Invalid or expired token');
+                } else if (response.status === 403) {
+                    showError('Token valid but admin permissions required');
+                } else {
+                    showError('Token validation failed');
+                }
+            } catch (error) {
+                showError(`Connection failed: ${error.message}. Please check if the server is running at ${apiUrl}.`);
+                console.error('Token validation error:', error);
+            } finally {
+                // Hide loading
+                loginBtn.disabled = false;
+                loginText.style.display = 'inline';
+                loginSpinner.style.display = 'none';
+            }
+        }
+
+        function showDashboard() {
+            document.getElementById('loginContainer').classList.add('hidden');
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('currentUser').textContent = currentUser;
+            document.getElementById('currentApiUrl').textContent = apiUrl;
+            document.getElementById('currentWsUrl').textContent = wsUrl;
+            
+            // Populate server URL in form for future reference
+            document.getElementById('apiUrl').value = apiUrl;
+            document.getElementById('wsUrl').value = wsUrl;
+            updateTokenCommand();
+            
+            // Initialize dashboard
+            initializeDashboard();
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            localStorage.removeItem('adminUser');
+            localStorage.removeItem('adminApiUrl');
+            localStorage.removeItem('adminWsUrl');
+            authToken = null;
+            currentUser = null;
+            
+            // Disconnect WebSocket
+            disconnectAdminWebSocket();
+            
+            // Clear intervals
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+            }
+            
+            document.getElementById('dashboard').classList.add('hidden');
+            document.getElementById('loginContainer').classList.remove('hidden');
+            
+            // Clear form
+            document.getElementById('loginForm').reset();
+            hideMessages();
+        }
+
+        function initializeDashboard() {
+            // Load initial data
+            refreshStatus();
+            loadOrders();
+            loadSystemStats();
+            
+            // Setup auto-refresh
+            setupAutoRefresh();
+            
+            // Connect to real-time order feed
+            connectAdminWebSocket();
+        }
+
+        function setupAutoRefresh() {
+            const autoRefreshCheckbox = document.getElementById('autoRefresh');
+            
+            function toggleAutoRefresh() {
+                if (autoRefreshInterval) {
+                    clearInterval(autoRefreshInterval);
+                    autoRefreshInterval = null;
+                }
+                
+                if (autoRefreshCheckbox.checked) {
+                    autoRefreshInterval = setInterval(() => {
+                        refreshStatus();
+                        loadSystemStats();
+                    }, 5000);
+                }
+            }
+            
+            autoRefreshCheckbox.addEventListener('change', toggleAutoRefresh);
+            toggleAutoRefresh();
+        }
+
+        // Broadcasting Control Functions
+        async function startBroadcast() {
+            await controlBroadcast('start-broadcast', 'Starting broadcast...');
+        }
+
+        async function pauseBroadcast() {
+            await controlBroadcast('pause-broadcast', 'Pausing broadcast...');
+        }
+
+        async function resumeBroadcast() {
+            await controlBroadcast('resume-broadcast', 'Resuming broadcast...');
+        }
+
+        async function stopBroadcast() {
+            await controlBroadcast('stop-broadcast', 'Stopping broadcast...');
+        }
+
+        async function restartBroadcast() {
+            await controlBroadcast('restart-broadcast', 'Restarting broadcast...');
+        }
+
+        async function controlBroadcast(endpoint, message) {
+            try {
+                log(message, 'info');
+                
+                const response = await fetch(`${API_BASE}/${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    log(`Operation completed: ${data.message}`, 'success');
+                    
+                    // Refresh status after action
+                    setTimeout(refreshStatus, 1000);
+                } else {
+                    log(`Operation failed: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                const errorMsg = `Failed to ${endpoint.replace('-', ' ')}: ${error.message}`;
+                log(`System error: ${errorMsg}`, 'error');
+            }
+        }
+
+        async function refreshStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/broadcast-status`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    updateBroadcastStatus(data);
+                } else {
+                    log(`Failed to get status: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Failed to refresh status: ${error.message}`, 'error');
+            }
+        }
+
+        function updateBroadcastStatus(data) {
+            const state = data.state;
+            const symbolCount = data.symbol_count;
+            const totalRecords = data.total_records;
+
+            // Update status display
+            document.getElementById('statusText').textContent = state.toUpperCase();
+            document.getElementById('statusDetails').textContent = 
+                `${symbolCount} symbols loaded with ${totalRecords} total records`;
+
+            // Update status indicator
+            const indicator = document.getElementById('statusIndicator');
+            indicator.className = `status-indicator status-${state.toLowerCase()}`;
+
+            // Update stats
+            document.getElementById('broadcastStatus').textContent = state.toUpperCase();
+            document.getElementById('symbolCount').textContent = symbolCount;
+            document.getElementById('totalRecords').textContent = totalRecords;
+
+            // Update button states
+            const startBtn = document.getElementById('startBtn');
+            const pauseBtn = document.getElementById('pauseBtn');
+            const resumeBtn = document.getElementById('resumeBtn');
+            const stopBtn = document.getElementById('stopBtn');
+            const restartBtn = document.getElementById('restartBtn');
+
+            // Reset all buttons
+            [startBtn, pauseBtn, resumeBtn, stopBtn, restartBtn].forEach(btn => {
+                btn.disabled = false;
+            });
+
+            // Set appropriate button states based on current state
+            switch(state.toLowerCase()) {
+                case 'stopped':
+                    pauseBtn.disabled = true;
+                    resumeBtn.disabled = true;
+                    stopBtn.disabled = true;
+                    break;
+                case 'running':
+                    startBtn.disabled = true;
+                    resumeBtn.disabled = true;
+                    break;
+                case 'paused':
+                    startBtn.disabled = true;
+                    pauseBtn.disabled = true;
+                    break;
+            }
+        }
+
+        // Order Management Functions
+        async function loadOrders() {
+            try {
+                log('Loading order data...', 'info');
+                
+                const response = await fetch(`${API_BASE}/orders`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    allOrders = data.orders || [];
+                    updateOrderFilters();
+                    filterOrders();
+                    updateOrderStats();
+                    log(`Successfully loaded ${allOrders.length} orders`, 'success');
+                } else {
+                    log(`Failed to load orders: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Error loading orders: ${error.message}`, 'error');
+            }
+        }
+
+        function updateOrderFilters() {
+            const symbolFilter = document.getElementById('symbolFilter');
+            const userFilter = document.getElementById('userFilter');
+            
+            // Get unique values
+            const symbols = [...new Set(allOrders.map(o => o.symbol))];
+            const users = [...new Set(allOrders.map(o => o.user_id))];
+            
+            // Update filters
+            updateSelectOptions(symbolFilter, symbols, 'All Symbols');
+            updateSelectOptions(userFilter, users, 'All Users');
+        }
+
+        function updateSelectOptions(select, options, defaultText) {
+            const currentValue = select.value;
+            select.innerHTML = `<option value="">${defaultText}</option>`;
+            
+            options.forEach(option => {
+                const optionEl = document.createElement('option');
+                optionEl.value = option;
+                optionEl.textContent = option;
+                if (option === currentValue) optionEl.selected = true;
+                select.appendChild(optionEl);
+            });
+        }
+
+        function filterOrders() {
+            const filters = {
+                symbol: document.getElementById('symbolFilter').value,
+                status: document.getElementById('statusFilter').value,
+                user: document.getElementById('userFilter').value,
+                search: document.getElementById('searchFilter').value.toLowerCase()
+            };
+
+            const filteredOrders = allOrders.filter(order => {
+                if (filters.symbol && order.symbol !== filters.symbol) return false;
+                if (filters.status && order.status !== filters.status) return false;
+                if (filters.user && order.user_id !== filters.user) return false;
+                if (filters.search && !order.id.toLowerCase().includes(filters.search) && 
+                    !order.symbol.toLowerCase().includes(filters.search)) return false;
+                return true;
+            });
+
+            updateOrdersTable(filteredOrders);
+        }
+
+        function updateOrdersTable(orders) {
+            const tbody = document.getElementById('ordersTableBody');
+            
+            if (orders.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="11" class="loading">
+                            No orders found matching the current filters
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = orders.map(order => `
+                <tr>
+                    <td>${order.id.toString().substr(0, 8)}...</td>
+                    <td>${order.user_id}</td>
+                    <td><strong>${order.symbol}</strong></td>
+                    <td><span class="order-status side-${order.side}">${order.side.toUpperCase()}</span></td>
+                    <td>${order.order_type}</td>
+                    <td>${order.quantity.toLocaleString()}</td>
+                    <td>${order.filled_quantity.toLocaleString()}/${order.quantity.toLocaleString()}</td>
+                    <td>${order.price ? '₹' + order.price.toFixed(2) : 'Market'}</td>
+                    <td><span class="order-status status-${order.status}">${order.status.toUpperCase()}</span></td>
+                    <td>${new Date(order.created_at).toLocaleDateString()}</td>
+                    <td>
+                        ${order.status === 'pending' ? 
+                            `<button class="btn btn-danger btn-sm" onclick="cancelOrder('${order.id}')">Cancel</button>` : 
+                            '-'
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateOrderStats() {
+            document.getElementById('totalOrders').textContent = allOrders.length;
+        }
+
+        async function cancelOrder(orderId) {
+            if (!confirm('Are you sure you want to cancel this order?')) return;
+            
+            try {
+                const response = await fetch(`${API_BASE}/orders/${orderId}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    log(`Order cancelled successfully`, 'success');
+                    loadOrders(); // Refresh orders
+                } else {
+                    log(`Failed to cancel order: ${data.message}`, 'error');
+                }
+            } catch (error) {
+                log(`Failed to cancel order: ${error.message}`, 'error');
+            }
+        }
+
+        // System Monitoring Functions
+        async function loadSystemStats() {
+            try {
+                const healthResponse = await fetch(`${API_BASE}/health`);
+                const healthData = await healthResponse.json();
+                
+                if (healthData.status === 'healthy') {
+                    log('System health check: OK', 'success');
+                } else {
+                    log('System health check: Warning', 'warning');
+                }
+                
+            } catch (error) {
+                log(`Failed to load system stats: ${error.message}`, 'error');
+            }
+        }
+
+        // Tab Management
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById(tabName + 'Tab').classList.add('active');
+            
+            // Load data if needed
+            if (tabName === 'orders') {
+                loadOrders();
+            } else if (tabName === 'monitoring') {
+                loadSystemStats();
+            }
+        }
+
+        // Utility Functions
+        function showError(message) {
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            
+            const successDiv = document.getElementById('loginSuccess');
+            successDiv.classList.add('hidden');
+        }
+
+        function showSuccess(message) {
+            const successDiv = document.getElementById('loginSuccess');
+            successDiv.textContent = message;
+            successDiv.classList.remove('hidden');
+            
+            const errorDiv = document.getElementById('loginError');
+            errorDiv.classList.add('hidden');
+        }
+
+        function hideMessages() {
+            document.getElementById('loginError').classList.add('hidden');
+            document.getElementById('loginSuccess').classList.add('hidden');
+        }
+
+        function log(message, type = 'info') {
+            const logsContainer = document.getElementById('systemLogs');
+            
+            // Clear empty state if it exists
+            if (logsContainer.innerHTML.includes('No Activity Logs')) {
+                logsContainer.innerHTML = '';
+            }
+            
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            
+            logsContainer.appendChild(entry);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            
+            // Keep only last 100 entries
+            while (logsContainer.children.length > 100) {
+                logsContainer.removeChild(logsContainer.firstChild);
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('systemLogs').innerHTML = 
+                '<div style="text-align: center; padding: 40px; color: #6c757d;">' +
+                    '<h4>No Activity Logs</h4>' +
+                    '<p>System activity will appear here as operations are performed</p>' +
+                '</div>';
+        }
+
+        // WebSocket Management
+        function connectAdminWebSocket() {
+            if (!authToken || !isWebSocketEnabled) {
+                return;
+            }
+
+            try {
+                const wsUrl = `${WS_BASE}/admin?token=${encodeURIComponent(authToken)}`;
+                adminWebSocket = new WebSocket(wsUrl);
+
+                adminWebSocket.onopen = function(event) {
+                    log('Connected to real-time order feed', 'success');
+                    wsReconnectAttempts = 0;
+                    
+                    // Add connection indicator
+                    updateWebSocketStatus('connected');
+                };
+
+                adminWebSocket.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleRealtimeOrderUpdate(data);
+                    } catch (error) {
+                        console.error('Failed to parse WebSocket message:', error);
+                    }
+                };
+
+                adminWebSocket.onerror = function(error) {
+                    log('Real-time feed connection error', 'error');
+                    updateWebSocketStatus('error');
+                };
+
+                adminWebSocket.onclose = function(event) {
+                    log('Real-time feed disconnected', 'warning');
+                    updateWebSocketStatus('disconnected');
+                    
+                    // Attempt to reconnect if not intentionally closed
+                    if (isWebSocketEnabled && wsReconnectAttempts < maxReconnectAttempts) {
+                        wsReconnectAttempts++;
+                        log(`Attempting to reconnect... (${wsReconnectAttempts}/${maxReconnectAttempts})`, 'info');
+                        
+                        setTimeout(() => {
+                            connectAdminWebSocket();
+                        }, reconnectDelay);
+                    }
+                };
+
+            } catch (error) {
+                log(`Failed to connect to real-time feed: ${error.message}`, 'error');
+                updateWebSocketStatus('error');
+            }
+        }
+
+        function disconnectAdminWebSocket() {
+            isWebSocketEnabled = false;
+            
+            if (adminWebSocket) {
+                adminWebSocket.close();
+                adminWebSocket = null;
+            }
+            
+            updateWebSocketStatus('disconnected');
+        }
+
+        function updateWebSocketStatus(status) {
+            const statusElement = document.getElementById('realtimeStatus');
+            
+            if (statusElement) {
+                statusElement.className = `ws-status ${status}`;
+                
+                switch(status) {
+                    case 'connected':
+                        statusElement.textContent = 'Real-time: CONNECTED';
+                        log('Real-time order updates: ACTIVE', 'success');
+                        break;
+                    case 'disconnected':
+                        statusElement.textContent = 'Real-time: DISCONNECTED';
+                        log('Real-time order updates: DISCONNECTED', 'warning');
+                        break;
+                    case 'error':
+                        statusElement.textContent = 'Real-time: ERROR';
+                        log('Real-time order updates: ERROR', 'error');
+                        break;
+                }
+            }
+        }
+
+        function handleRealtimeOrderUpdate(data) {
+            // Handle different types of real-time updates based on Rust AdminOrderEvent format
+            if (data.type === 'order_event' && data.order) {
+                const eventType = data.event_type;
+                const order = data.order;
+                
+                switch(eventType) {
+                    case 'order_placed':
+                        addNewOrderInRealTime(order);
+                        log(`New order placed: ${order.symbol} ${order.side.toUpperCase()} ${order.quantity}`, 'info');
+                        break;
+                        
+                    case 'order_filled':
+                        updateOrderInRealTime(order);
+                        log(`Order ${order.id.substr(0, 8)}... filled: ${order.symbol}`, 'success');
+                        break;
+                        
+                    case 'order_cancelled':
+                        updateOrderInRealTime(order);
+                        log(`Order ${order.id.substr(0, 8)}... cancelled: ${order.symbol}`, 'warning');
+                        break;
+                        
+                    case 'order_updated':
+                        updateOrderInRealTime(order);
+                        log(`Order ${order.id.substr(0, 8)}... updated: ${order.status.toUpperCase()}`, 'info');
+                        break;
+                        
+                    case 'order_partial_fill':
+                        updateOrderInRealTime(order);
+                        log(`Partial fill: ${order.symbol} ${order.filled_quantity}/${order.quantity}`, 'info');
+                        break;
+                        
+                    default:
+                        log(`Unknown order event: ${eventType}`, 'warning');
+                }
+            } else if (data.type === 'admin_connected') {
+                log(data.message, 'success');
+            } else if (data.type === 'lag_warning') {
+                log(data.message, 'warning');
+                log('Real-time feed lagging - some events may be missed', 'warning');
+            } else {
+                log(`Received unknown message type: ${data.type}`, 'info');
+            }
+        }
+
+        function updateOrderInRealTime(updatedOrder) {
+            // Find and update the order in our local array
+            const orderIndex = allOrders.findIndex(order => order.id === updatedOrder.id);
+            
+            if (orderIndex !== -1) {
+                // Update existing order
+                allOrders[orderIndex] = { ...allOrders[orderIndex], ...updatedOrder };
+            } else {
+                // This might be a new order we haven't seen yet
+                allOrders.unshift(updatedOrder);
+            }
+            
+            // Update filters and refresh display
+            updateOrderFilters();
+            filterOrders();
+            updateOrderStats();
+            
+            // Highlight the updated row briefly
+            highlightOrderRow(updatedOrder.id);
+        }
+
+        function addNewOrderInRealTime(newOrder) {
+            // Add new order to the beginning of the array
+            allOrders.unshift(newOrder);
+            
+            // Update filters and refresh display
+            updateOrderFilters();
+            filterOrders();
+            updateOrderStats();
+            
+            // Highlight the new row
+            highlightOrderRow(newOrder.id, 'new');
+        }
+
+        function highlightOrderRow(orderId, type = 'update') {
+            // Find the row in the table and highlight it
+            setTimeout(() => {
+                const rows = document.querySelectorAll('#ordersTableBody tr');
+                for (const row of rows) {
+                    const firstCell = row.querySelector('td');
+                    if (firstCell && firstCell.textContent.includes(orderId.substr(0, 8))) {
+                        const highlightClass = type === 'new' ? 'highlight-new' : 'highlight-update';
+                        row.classList.add(highlightClass);
+                        
+                        // Remove highlight after 3 seconds
+                        setTimeout(() => {
+                            row.classList.remove(highlightClass);
+                        }, 3000);
+                        break;
+                    }
+                }
+            }, 100);
+        }
+
+        function toggleRealTimeUpdates() {
+            if (isWebSocketEnabled) {
+                disconnectAdminWebSocket();
+                document.getElementById('realtimeStatus').textContent = 'Real-time: DISCONNECTED';
+            } else {
+                connectAdminWebSocket();
+                document.getElementById('realtimeStatus').textContent = 'Real-time: CONNECTED';
+            }
+            isWebSocketEnabled = !isWebSocketEnabled;
+        }
+    </script>
+</body>
+</html> 

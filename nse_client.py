@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 NSE Socket Client Library
-A Python client library for the NSE Socket server with WebSocket and REST API support.
+A professional Python client library for the NSE Socket server with WebSocket and REST API support.
 """
 
 import json
@@ -9,97 +9,178 @@ import time
 import threading
 import requests
 import websocket
-from typing import Optional, Dict, Any, Callable, List, Set, Union
+from typing import Optional, Dict, Any, Callable, List, Set
 from datetime import datetime
 import logging
 import signal
 import sys
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
+# Configure professional logging format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 logger = logging.getLogger(__name__)
+
+
+class NSESocketError(Exception):
+    """Base exception for NSE Socket client errors."""
+    pass
+
+
+class AuthenticationError(NSESocketError):
+    """Exception raised for authentication-related errors."""
+    pass
+
+
+class ConnectionError(NSESocketError):
+    """Exception raised for connection-related errors."""
+    pass
+
+
+class SubscriptionError(NSESocketError):
+    """Exception raised for subscription-related errors."""
+    pass
 
 
 class NSEClient:
     """
-    NSE Socket Client for real-time data streaming and order management.
+    Professional NSE Socket Client for real-time market data streaming and order management.
+    
+    This client provides a robust interface for connecting to the NSE Socket server,
+    subscribing to real-time market data feeds, and managing trading orders.
     
     Example Usage:
-        client = NSEClient("ws://localhost:8080", "http://localhost:3000", "your-jwt-token")
-        client.on_ticks = lambda ticks: print(f"Received: {ticks}")
-        client.on_connect = lambda: print("Connected!")
-        
-        # Connect and subscribe to multiple symbols
-        if client.connect_and_subscribe(["NIFTY", "INDIGO", "RELIANCE", "TCS"]):
-            # This will run continuously until interrupted
+        # Method 1: Request token and connect
+        client = NSEClient("ws://localhost:8080", "http://localhost:3000")
+        if client.authenticate("username"):
+            client.connect_and_subscribe(["NIFTY", "RELIANCE", "TCS"])
             client.run()
         
-        # Or use the traditional method
-        client.ws_connect()
-        client.subscribe_multiple(["NIFTY", "INDIGO", "RELIANCE", "TCS"])
-        client.run()  # Blocks until disconnected or interrupted
+        # Method 2: Use existing token
+        client = NSEClient("localhost", "jwt-token")
+        client.on_ticks = lambda data: print(f"Received: {data}")
+        client.connect_and_subscribe(["NIFTY", "RELIANCE"])
+        client.run()
     """
     
-    def __init__(self, ws_uri: str, api_uri: str, token: str):
+    def __init__(self, ws_uri: str, api_uri: str, token: Optional[str] = None):
         """
-        Initialize NSE Client.
+        Initialize NSE Socket Client.
         
         Args:
-            ws_uri: WebSocket server URI (e.g., "ws://localhost:8080")
-            api_uri: REST API server URI (e.g., "http://localhost:3000")
-            token: JWT authentication token
+            uri: WebSocket server URI (e.g., "localhost")
+            token: JWT authentication token (optional, can be obtained via authenticate())
+        
+        Raises:
+            ValueError: If URIs are invalid
         """
-        self.ws_uri = ws_uri.rstrip('/')
-        self.api_uri = api_uri.rstrip('/')
+        # Validate and normalize URIs
+        if not ws_uri or not api_uri:
+            raise ValueError("WebSocket and API URIs must be provided")
+            
+        self.ws_uri = ws_uri
+        self.api_uri = api_uri
         self.token = token
         
-        # WebSocket connection
+        # Connection state
         self.ws = None
         self.connected = False
         self.running = False
         self.ws_thread = None
         self._stop_event = threading.Event()
         
-        # Current subscriptions - supports multiple symbols
+        # Subscription management
         self.subscribed_symbols: Set[str] = set()
         
-        # API headers
-        self.headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
+        # API configuration
+        self.headers = self._get_headers()
         
-        # Callbacks
-        self.on_ticks: Optional[Callable] = None
-        self.on_connect: Optional[Callable] = None
-        self.on_disconnect: Optional[Callable] = None
-        self.on_error: Optional[Callable] = None
-        self.on_order_update: Optional[Callable] = None
+        # Event callbacks
+        self.on_ticks: Optional[Callable[[Dict], None]] = None
+        self.on_connect: Optional[Callable[[], None]] = None
+        self.on_disconnect: Optional[Callable[[], None]] = None
+        self.on_error: Optional[Callable[[Exception], None]] = None
+        self.on_order_update: Optional[Callable[[Dict], None]] = None
         
-        # Reconnection settings
+        # Connection settings
         self.auto_reconnect = True
-        self.reconnect_interval = 5  # seconds
+        self.reconnect_interval = 5
         self.max_reconnect_attempts = 10
         self.reconnect_attempts = 0
         
-        # Heartbeat settings
+        # Heartbeat configuration
         self.heartbeat_enabled = True
-        self.heartbeat_interval = 25  # seconds (slightly less than server's 30s)
-        self.heartbeat_thread = None
+        self.heartbeat_interval = 25
+        self.ping_timeout = 10
         self.last_pong_time = None
-        self.ping_timeout = 10  # seconds to wait for pong response
         
-        # Setup signal handlers for graceful shutdown
+        # Setup graceful shutdown
         self._setup_signal_handlers()
 
+    def _get_headers(self) -> Dict[str, str]:
+        """Get HTTP headers for API requests."""
+        headers = {'Content-Type': 'application/json'}
+        if self.token:
+            headers['Authorization'] = f'Bearer {self.token}'
+        return headers
+
     def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown."""
+        """Configure signal handlers for graceful shutdown."""
         def signal_handler(signum, frame):
-            logger.info("🛑 Shutdown signal received")
+            logger.info("Shutdown signal received")
             self.stop()
             
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
+
+    def authenticate(self, username: str) -> bool:
+        """
+        Request JWT token from the server using username.
+        
+        Args:
+            username: Username for authentication
+            
+        Returns:
+            bool: True if authentication successful
+            
+        Raises:
+            AuthenticationError: If authentication fails
+        """
+        try:
+            logger.info(f"Requesting authentication for user: {username}")
+            
+            response = requests.post(
+                f"{self.api_uri}/api/login",
+                json={"username": username},
+                headers={'Content-Type': 'application/json'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("success") and data.get("token"):
+                    self.token = data["token"]
+                    self.headers = self._get_headers()
+                    
+                    user_id = data.get("user_id", username)
+                    permissions = data.get("permissions", [])
+                    
+                    logger.info(f"Authentication successful for user: {user_id}")
+                    logger.info(f"Granted permissions: {', '.join(permissions)}")
+                    
+                    return True
+                else:
+                    error_msg = data.get("message", "Authentication failed")
+                    raise AuthenticationError(f"Authentication failed: {error_msg}")
+            else:
+                raise AuthenticationError(f"Authentication request failed with status {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            raise AuthenticationError(f"Authentication request failed: {str(e)}")
+        except Exception as e:
+            raise AuthenticationError(f"Authentication error: {str(e)}")
 
     def connect_and_subscribe(self, symbols: List[str]) -> bool:
         """
@@ -665,37 +746,36 @@ class NSEClient:
                 else:
                     logger.error(f"❌ {msg} - Symbol: {symbol}")
             
-            # Handle stock data ticks
+            # Handle market data
             elif "symbol" in data and "data" in data:
                 tick_data = {
                     "symbol": data["symbol"],
                     "data": data["data"],
                     "timestamp": data.get("timestamp", ""),
-                    "datetime": datetime.now()
+                    "received_at": datetime.now()
                 }
                 
-                # Trigger callback if set
                 if self.on_ticks:
                     try:
                         self.on_ticks(tick_data)
                     except Exception as e:
-                        logger.error(f"Error in ticks callback: {e}")
+                        logger.error(f"Error in ticks callback: {str(e)}")
             
-            # Handle multiple ticks (if server sends batch data)
+            # Handle batch data
             elif "ticks" in data:
                 for tick in data["ticks"]:
                     tick_data = {
                         "symbol": tick["symbol"],
                         "data": tick["data"], 
                         "timestamp": tick.get("timestamp", ""),
-                        "datetime": datetime.now()
+                        "received_at": datetime.now()
                     }
                     
                     if self.on_ticks:
                         try:
                             self.on_ticks(tick_data)
                         except Exception as e:
-                            logger.error(f"Error in ticks callback: {e}")
+                            logger.error(f"Error in ticks callback: {str(e)}")
             
             else:
                 logger.debug(f"Received message: {message}")
@@ -896,7 +976,8 @@ class NSEClient:
 # Convenience function for quick setup
 def create_client(ws_uri: str = "ws://localhost:8080", 
                  api_uri: str = "http://localhost:3000",
-                 token: Optional[str] = None) -> NSEClient:
+                 token: Optional[str] = None,
+                 username: Optional[str] = None) -> NSEClient:
     """
     Create NSE client with default settings.
     
@@ -904,6 +985,7 @@ def create_client(ws_uri: str = "ws://localhost:8080",
         ws_uri: WebSocket URI
         api_uri: REST API URI  
         token: JWT token (will try to load from file if not provided)
+        username: Username for authentication (optional, used if no token provided)
         
     Returns:
         NSEClient: Configured client instance
@@ -920,7 +1002,14 @@ def create_client(ws_uri: str = "ws://localhost:8080",
             token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiIsImp0aSI6ImMzOWY4NzgzLWFmZTYtNDk5Zi1hNTg1LWRjYTkxNjk1ZjFhZCIsImV4cCI6MTc0ODk2OTYyNiwiaWF0IjoxNzQ4OTYyNDI2LCJ1c2VyX2lkIjoiYWRtaW4iLCJwZXJtaXNzaW9ucyI6WyJyZWFkX2RhdGEiLCJ3ZWJzb2NrZXRfY29ubmVjdCIsImFkbWluIl19.PTCECjo-wCdr9Tgp6bRYR2bcrBtv7uZzr6N4z7L-TkU"
             print("🔑 Using default token")
     
-    return NSEClient(ws_uri, api_uri, token)
+    client = NSEClient(ws_uri, api_uri, token)
+    
+    # Authenticate if username provided and no token
+    if not token and username:
+        if not client.authenticate(username):
+            raise AuthenticationError(f"Failed to authenticate user: {username}")
+    
+    return client
 
 
 if __name__ == "__main__":
@@ -931,27 +1020,26 @@ if __name__ == "__main__":
     # Create client
     client = create_client()
     
-    # Set up callbacks
-    def on_ticks(ticks):
-        symbol = ticks["symbol"]
-        data = ticks["data"]
-        timestamp = ticks.get("timestamp", "")
-        print(f"📊 {symbol}: Close=${data['close']:.2f}, Volume={data['volume']:,} [{timestamp}]")
+    # Configure event handlers
+    def handle_market_data(data):
+        symbol = data["symbol"]
+        price_data = data["data"]
+        print(f"{symbol}: Price=${price_data['close']:.2f}, Volume={price_data['volume']:,}")
     
-    def on_connect():
-        print("✅ Connected to NSE Socket server")
+    def handle_connection():
+        print("Market data connection established")
     
-    def on_disconnect():
-        print("❌ Disconnected from server")
+    def handle_disconnection():
+        print("Market data connection lost")
     
-    def on_order_update(order):
-        print(f"📦 Order Update: {order['id']} - {order['status']}")
+    def handle_order_update(order):
+        print(f"Order {order['id']}: {order['status']}")
     
-    # Assign callbacks
-    client.on_ticks = on_ticks
-    client.on_connect = on_connect  
-    client.on_disconnect = on_disconnect
-    client.on_order_update = on_order_update
+    # Assign event handlers
+    client.on_ticks = handle_market_data
+    client.on_connect = handle_connection
+    client.on_disconnect = handle_disconnection
+    client.on_order_update = handle_order_update
     
     # Method 1: Connect and subscribe in one call, then run
     symbols = ["NIFTY", "INDIGO", "RELIANCE", "TCS", "HDFC"]

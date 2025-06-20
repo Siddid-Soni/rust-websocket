@@ -1,11 +1,12 @@
-use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
-use log::{warn, error};
+use log::error;
 use urlencoding;
+use uuid::Uuid;
 
 // JWT Configuration
-const JWT_SECRET: &str = "your-secret-key-change-in-production";
+const TOKEN_EXPIRY_HOURS: i64 = 72; // 24 hours
 
 // JWT Claims structure
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -25,18 +26,12 @@ pub struct JwtValidator {
 }
 
 impl JwtValidator {
-    pub fn new() -> Self {
-        // In production: load secret from environment variable
-        let secret = std::env::var("JWT_SECRET").unwrap_or_else(|_| {
-            warn!("JWT_SECRET not set, using default (NOT for production!)");
-            JWT_SECRET.to_string()
-        });
-        
+    pub fn new(jwt_secret: &str) -> Self {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.leeway = 30; // Allow 30 seconds clock skew
         
         Self {
-            decoding_key: DecodingKey::from_secret(secret.as_ref()),
+            decoding_key: DecodingKey::from_secret(jwt_secret.as_ref()),
             validation,
         }
     }
@@ -64,6 +59,36 @@ impl JwtValidator {
                 Err(format!("Invalid token: {}", e))
             }
         }
+    }
+}
+
+// JWT generator
+pub struct JwtGenerator {
+    encoding_key: EncodingKey,
+}
+
+impl JwtGenerator {
+    pub fn new(jwt_secret: &str) -> Self {
+        Self {
+            encoding_key: EncodingKey::from_secret(jwt_secret.as_ref()),
+        }
+    }
+    
+    pub fn generate_token(&self, user_id: &str, permissions: Vec<String>) -> Result<String, String> {
+        let now = Utc::now();
+        let exp = now.timestamp() + (TOKEN_EXPIRY_HOURS * 3600);
+        
+        let claims = Claims {
+            sub: user_id.to_string(),
+            jti: Uuid::new_v4().to_string(), // Unique session ID
+            exp,
+            iat: now.timestamp(),
+            user_id: user_id.to_string(),
+            permissions,
+        };
+        
+        encode(&Header::default(), &claims, &self.encoding_key)
+            .map_err(|e| format!("Failed to generate token: {}", e))
     }
 }
 

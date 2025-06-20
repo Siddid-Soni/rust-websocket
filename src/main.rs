@@ -13,11 +13,10 @@ use tokio::time::interval;
 use log::{info, error};
 use tower_http::cors::CorsLayer;
 
-use crate::config::{Config, DATA_BROADCAST_INTERVAL_SECS, CLEANUP_INTERVAL_SECS, BROADCAST_CHANNEL_SIZE};
-use crate::data::{DataLoader, DataBroadcaster, MultiSymbolDataBroadcaster};
-use crate::auth::{SessionManager, extract_jwt_from_request};
+use crate::config::{Config, CLEANUP_INTERVAL_SECS, BROADCAST_CHANNEL_SIZE};
+use crate::data::{PubSubManager, BroadcastController};
+use crate::auth::{SessionManager, extract_jwt_from_request, JwtGenerator};
 use crate::websocket::{WebSocketHandler, AdminWebSocketHandler, AdminOrderEvent};
-use crate::data::PubSubManager;
 use crate::trading::OrderManager;
 use crate::api::{ApiState, create_api_router};
 
@@ -133,8 +132,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Initialize managers
-    let session_manager = SessionManager::new();
+    let session_manager: SessionManager = SessionManager::new(&config.jwt_secret);
     let pubsub_manager = Arc::new(PubSubManager::new(BROADCAST_CHANNEL_SIZE));
+    let broadcast_controller = Arc::new(BroadcastController::new(pubsub_manager.clone()));
     
     // Initialize broadcast channel for backwards compatibility
     let (tx, _rx) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
@@ -145,39 +145,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize order manager with admin events
     let order_manager = Arc::new(OrderManager::new_with_admin_events(admin_tx.clone()));
 
-    // Try to load multiple symbols from data directory
-    match DataLoader::load_multiple_symbols("data") {
-        Ok(symbol_data) => {
-            let symbol_count = symbol_data.len();
-            let total_records = symbol_data.values().map(|data| data.len()).sum::<usize>();
-            
-            info!("📊 Loaded {} symbols with {} total records", symbol_count, total_records);
-            
-            // Start multi-symbol broadcasting with pub/sub
-            let multi_broadcaster = MultiSymbolDataBroadcaster::new(
-                symbol_data,
-                pubsub_manager.clone(),
-                DATA_BROADCAST_INTERVAL_SECS
-            );
-            multi_broadcaster.start_broadcasting();
-            
-            info!("🚀 Started pub/sub broadcasting for {} symbols", symbol_count);
-        }
-        Err(e) => {
-            error!("Failed to load multiple symbols: {}", e);
-            info!("Falling back to single file mode");
-            
-            // Fallback to single file broadcasting
-            let stock_data = DataLoader::load_from_csv(&config.data_file)?;
-            let data_count = stock_data.len();
-            
-            let data_broadcaster = DataBroadcaster::new(stock_data, DATA_BROADCAST_INTERVAL_SECS);
-            data_broadcaster.start_broadcasting(tx.clone());
-            
-            info!("📊 Started broadcasting {} stock records every {} seconds", 
-                  data_count, DATA_BROADCAST_INTERVAL_SECS);
-        }
-    }
+    // NOTE: Broadcasting is now controlled by admin API endpoints
+    // No automatic startup of broadcasting - it's controlled via /api/start-broadcast
+    info!("📊 Broadcasting system ready - use /api/start-broadcast to begin data streaming");
 
     // Start background tasks
     start_background_tasks(
@@ -191,6 +161,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_state = ApiState {
         order_manager: order_manager.clone(),
         session_manager: session_manager.clone(),
+        jwt_generator: Arc::new(JwtGenerator::new(&config.jwt_secret)),
+        pubsub_manager: pubsub_manager.clone(),
+        broadcast_controller,
     };
     
     let api_router = create_api_router(api_state)

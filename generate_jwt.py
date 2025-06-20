@@ -11,7 +11,7 @@ import json
 from datetime import datetime, timedelta, timezone
 
 # JWT Configuration (must match server)
-JWT_SECRET = "your-secret-key-change-in-production"
+JWT_SECRET = "3cf7753b87ed1a9e7508f9c928292bcb5fbc6441eaf587bbd8da7f17b77f4b61"
 ALGORITHM = "HS256"
 
 def generate_jwt_token(user_id, permissions=None, expires_in_minutes=60):

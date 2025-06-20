@@ -11,13 +11,18 @@ use uuid::Uuid;
 use log::{info, warn, error};
 
 use crate::trading::{OrderManager, OrderRequest, OrderResponse, OrderListResponse, OrderStatus};
-use crate::auth::SessionManager;
+use crate::auth::{SessionManager, JwtGenerator};
 use crate::auth::Claims;
+use crate::data::{PubSubManager, BroadcastController, BroadcastCommand, BroadcastState};
+
 
 #[derive(Clone)]
 pub struct ApiState {
     pub order_manager: Arc<OrderManager>,
     pub session_manager: SessionManager,
+    pub jwt_generator: Arc<JwtGenerator>,
+    pub pubsub_manager: Arc<PubSubManager>,
+    pub broadcast_controller: Arc<BroadcastController>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -25,6 +30,27 @@ pub struct OrderQuery {
     pub symbol: Option<String>,
     pub status: Option<String>,
     pub limit: Option<usize>,
+}
+
+// Request/Response structures for authentication
+#[derive(Debug, Deserialize)]
+pub struct LoginRequest {
+    pub username: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct LoginResponse {
+    pub success: bool,
+    pub message: String,
+    pub token: Option<String>,
+    pub user_id: Option<String>,
+    pub permissions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BroadcastResponse {
+    pub success: bool,
+    pub message: String,
 }
 
 // Extract JWT token from Authorization header
@@ -250,6 +276,299 @@ pub async fn cancel_order(
     }
 }
 
+// POST /api/login - Get JWT token for username
+pub async fn login(
+    State(state): State<ApiState>,
+    Json(login_request): Json<LoginRequest>,
+) -> Result<Json<LoginResponse>, (StatusCode, Json<LoginResponse>)> {
+    let username = login_request.username.trim();
+    
+    // Basic validation
+    if username.is_empty() {
+        return Err((StatusCode::BAD_REQUEST, Json(LoginResponse {
+            success: false,
+            message: "Username cannot be empty".to_string(),
+            token: None,
+            user_id: None,
+            permissions: None,
+        })));
+    }
+    
+    // Determine user permissions based on username
+    // In a real app, this would query a user database
+    let permissions = vec!["user".to_string()];
+    
+    // Generate JWT token
+    match state.jwt_generator.generate_token(username, permissions.clone()) {
+        Ok(token) => {
+            info!("JWT token generated for user: {}", username);
+            Ok(Json(LoginResponse {
+                success: true,
+                message: "Token generated successfully".to_string(),
+                token: Some(token),
+                user_id: Some(username.to_string()),
+                permissions: Some(permissions),
+            }))
+        }
+        Err(e) => {
+            error!("Failed to generate token for user {}: {}", username, e);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(LoginResponse {
+                success: false,
+                message: "Failed to generate token".to_string(),
+                token: None,
+                user_id: None,
+                permissions: None,
+            })))
+        }
+    }
+}
+
+// POST /api/start-broadcast - Start data broadcasting (admin only)
+pub async fn start_broadcast(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastResponse>, (StatusCode, Json<BroadcastResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastResponse {
+                success: false,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    // Check if user has admin permissions
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastResponse {
+            success: false,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    // Log the broadcast start request
+    info!("Admin user {} requested to start data broadcasting", claims.user_id);
+    
+    // Use the broadcast controller to start broadcasting
+    match state.broadcast_controller.execute_command(BroadcastCommand::Start) {
+        Ok(message) => {
+            Ok(Json(BroadcastResponse {
+                success: true,
+                message,
+            }))
+        }
+        Err(error_message) => {
+            error!("Failed to start broadcasting: {}", error_message);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(BroadcastResponse {
+                success: false,
+                message: error_message,
+            })))
+        }
+    }
+}
+
+// POST /api/pause-broadcast - Pause data broadcasting (admin only)
+pub async fn pause_broadcast(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastResponse>, (StatusCode, Json<BroadcastResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastResponse {
+                success: false,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastResponse {
+            success: false,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    info!("Admin user {} requested to pause data broadcasting", claims.user_id);
+    
+    match state.broadcast_controller.execute_command(BroadcastCommand::Pause) {
+        Ok(message) => {
+            Ok(Json(BroadcastResponse {
+                success: true,
+                message,
+            }))
+        }
+        Err(error_message) => {
+            Err((StatusCode::BAD_REQUEST, Json(BroadcastResponse {
+                success: false,
+                message: error_message,
+            })))
+        }
+    }
+}
+
+// POST /api/resume-broadcast - Resume data broadcasting (admin only)
+pub async fn resume_broadcast(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastResponse>, (StatusCode, Json<BroadcastResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastResponse {
+                success: false,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastResponse {
+            success: false,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    info!("Admin user {} requested to resume data broadcasting", claims.user_id);
+    
+    match state.broadcast_controller.execute_command(BroadcastCommand::Resume) {
+        Ok(message) => {
+            Ok(Json(BroadcastResponse {
+                success: true,
+                message,
+            }))
+        }
+        Err(error_message) => {
+            Err((StatusCode::BAD_REQUEST, Json(BroadcastResponse {
+                success: false,
+                message: error_message,
+            })))
+        }
+    }
+}
+
+// POST /api/stop-broadcast - Stop data broadcasting (admin only)
+pub async fn stop_broadcast(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastResponse>, (StatusCode, Json<BroadcastResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastResponse {
+                success: false,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastResponse {
+            success: false,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    info!("Admin user {} requested to stop data broadcasting", claims.user_id);
+    
+    match state.broadcast_controller.execute_command(BroadcastCommand::Stop) {
+        Ok(message) => {
+            Ok(Json(BroadcastResponse {
+                success: true,
+                message,
+            }))
+        }
+        Err(error_message) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(BroadcastResponse {
+                success: false,
+                message: error_message,
+            })))
+        }
+    }
+}
+
+// POST /api/restart-broadcast - Restart data broadcasting (admin only)
+pub async fn restart_broadcast(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastResponse>, (StatusCode, Json<BroadcastResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastResponse {
+                success: false,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastResponse {
+            success: false,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    info!("Admin user {} requested to restart data broadcasting", claims.user_id);
+    
+    match state.broadcast_controller.execute_command(BroadcastCommand::Restart) {
+        Ok(message) => {
+            Ok(Json(BroadcastResponse {
+                success: true,
+                message,
+            }))
+        }
+        Err(error_message) => {
+            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(BroadcastResponse {
+                success: false,
+                message: error_message,
+            })))
+        }
+    }
+}
+
+// GET /api/broadcast-status - Get broadcasting status (admin only)
+#[derive(Debug, Serialize)]
+pub struct BroadcastStatusResponse {
+    pub success: bool,
+    pub state: BroadcastState,
+    pub symbol_count: usize,
+    pub total_records: usize,
+    pub message: String,
+}
+
+pub async fn broadcast_status(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<BroadcastStatusResponse>, (StatusCode, Json<BroadcastStatusResponse>)> {
+    // Authenticate user and check admin permissions
+    let claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(BroadcastStatusResponse {
+                success: false,
+                state: BroadcastState::Stopped,
+                symbol_count: 0,
+                total_records: 0,
+                message: msg.to_string(),
+            }))
+        })?;
+
+    if !claims.permissions.contains(&"admin".to_string()) {
+        return Err((StatusCode::FORBIDDEN, Json(BroadcastStatusResponse {
+            success: false,
+            state: BroadcastState::Stopped,
+            symbol_count: 0,
+            total_records: 0,
+            message: "Admin permissions required".to_string(),
+        })));
+    }
+
+    let (state_info, symbol_count, total_records) = state.broadcast_controller.get_status_info();
+    
+    Ok(Json(BroadcastStatusResponse {
+        success: true,
+        state: state_info.clone(),
+        symbol_count,
+        total_records,
+        message: format!("Broadcasting is {:?} with {} symbols and {} total records", state_info, symbol_count, total_records),
+    }))
+}
+
 // GET /api/health - Health check endpoint
 pub async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({
@@ -263,6 +582,13 @@ pub async fn health_check() -> Json<serde_json::Value> {
 pub fn create_api_router(state: ApiState) -> Router {
     let api_routes = Router::new()
         .route("/health", get(health_check))
+        .route("/login", post(login))
+        .route("/start-broadcast", post(start_broadcast))
+        .route("/pause-broadcast", post(pause_broadcast))
+        .route("/resume-broadcast", post(resume_broadcast))
+        .route("/stop-broadcast", post(stop_broadcast))
+        .route("/restart-broadcast", post(restart_broadcast))
+        .route("/broadcast-status", get(broadcast_status))
         .route("/orders", post(place_order))
         .route("/orders", get(get_orders))
         .route("/orders/:order_id", get(get_order))
