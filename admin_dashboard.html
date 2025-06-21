@@ -831,6 +831,7 @@
         let wsUrl = 'ws://localhost:8080'; // Dynamic WebSocket URL
         let API_BASE = '';
         let WS_BASE = '';
+        let ordersLoaded = false; // Track if orders have been loaded initially
 
         // Initialize URLs based on user input
         function updateServerUrls(apiUrlInput, wsUrlInput) {
@@ -979,6 +980,7 @@
             localStorage.removeItem('adminWsUrl');
             authToken = null;
             currentUser = null;
+            ordersLoaded = false; // Reset orders loaded flag
             
             // Disconnect WebSocket
             disconnectAdminWebSocket();
@@ -1000,6 +1002,7 @@
             // Load initial data
             refreshStatus();
             loadOrders();
+            ordersLoaded = true; // Mark orders as loaded
             loadSystemStats();
             
             // Setup auto-refresh
@@ -1163,6 +1166,7 @@
 
                 if (data.success) {
                     allOrders = data.orders || [];
+                    ordersLoaded = true; // Ensure flag is set whenever orders are loaded
                     updateOrderFilters();
                     filterOrders();
                     updateOrderStats();
@@ -1312,11 +1316,12 @@
             document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
             document.getElementById(tabName + 'Tab').classList.add('active');
             
-            // Load data if needed
-            if (tabName === 'orders') {
-                loadOrders();
+            // Load data only if not already loaded for orders, or always for monitoring
+            if (tabName === 'orders' && !ordersLoaded) {
+                loadOrders(); // Only load orders if not already loaded
+                ordersLoaded = true;
             } else if (tabName === 'monitoring') {
-                loadSystemStats();
+                loadSystemStats(); // Always refresh monitoring stats
             }
         }
 
