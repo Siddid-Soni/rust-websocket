@@ -793,17 +793,9 @@ RUST_LOG=debug ./target/release/nse_socket
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with [Tokio](https://tokio.rs/) for async runtime
 - Uses [Axum](https://github.com/tokio-rs/axum) for HTTP server
 - WebSocket support via [tokio-tungstenite](https://github.com/snapview/tokio-tungstenite)
 - JWT authentication with [jsonwebtoken](https://github.com/Keats/jsonwebtoken)
-
----
-
-**Happy Trading!** 📈🚀
