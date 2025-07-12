@@ -296,7 +296,11 @@ pub async fn login(
     
     // Determine user permissions based on username
     // In a real app, this would query a user database
-    let permissions = vec!["user".to_string()];
+    let permissions = if username == "admin" {
+        vec!["admin".to_string(), "user".to_string()]
+    } else {
+        vec!["user".to_string()]
+    };
     
     // Generate JWT token
     match state.jwt_generator.generate_token(username, permissions.clone()) {
