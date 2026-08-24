@@ -4,6 +4,7 @@ use tokio::sync::broadcast;
 use tokio::task::JoinHandle;
 use serde::{Deserialize, Serialize};
 use log::{info, warn, error};
+use chrono::{DateTime, Utc};
 
 use crate::data::{DataLoader, MultiSymbolDataBroadcaster, PubSubManager, StockData};
 use crate::config::DATA_BROADCAST_INTERVAL_SECS;
@@ -29,6 +30,7 @@ pub struct BroadcastController {
     pubsub_manager: Arc<PubSubManager>,
     cancel_handles: Arc<Mutex<Vec<JoinHandle<()>>>>,
     loaded_data: Arc<Mutex<Option<HashMap<String, Vec<StockData>>>>>,
+    broadcast_interval_secs: u64,
 }
 
 impl BroadcastController {
@@ -38,6 +40,23 @@ impl BroadcastController {
             pubsub_manager,
             cancel_handles: Arc::new(Mutex::new(Vec::new())),
             loaded_data: Arc::new(Mutex::new(None)),
+            broadcast_interval_secs: DATA_BROADCAST_INTERVAL_SECS,
+        }
+    }
+
+    pub fn new_with_data(
+        pubsub_manager: Arc<PubSubManager>,
+        prepared_data: HashMap<String, Vec<StockData>>,
+        broadcast_interval_secs: u64,
+    ) -> Self {
+        let loaded_data = Arc::new(Mutex::new(Some(prepared_data)));
+        
+        Self {
+            state: Arc::new(Mutex::new(BroadcastState::Stopped)),
+            pubsub_manager,
+            cancel_handles: Arc::new(Mutex::new(Vec::new())),
+            loaded_data,
+            broadcast_interval_secs,
         }
     }
 
@@ -78,17 +97,22 @@ impl BroadcastController {
     }
 
     fn start_broadcasting(&self) -> Result<String, String> {
-        // Load data first
-        let symbol_data = match self.load_data() {
-            Ok(data) => data,
-            Err(e) => return Err(format!("Failed to load data: {}", e))
+        // Use preloaded data if available, otherwise load data
+        let symbol_data = if let Some(data) = self.loaded_data.lock().unwrap().clone() {
+            data
+        } else {
+            match self.load_data() {
+                Ok(data) => {
+                    // Store loaded data
+                    *self.loaded_data.lock().unwrap() = Some(data.clone());
+                    data
+                }
+                Err(e) => return Err(format!("Failed to load data: {}", e))
+            }
         };
 
         let symbol_count = symbol_data.len();
         let total_records = symbol_data.values().map(|data| data.len()).sum::<usize>();
-
-        // Store loaded data
-        *self.loaded_data.lock().unwrap() = Some(symbol_data.clone());
 
         // Clear any existing handles
         self.clear_handles();
@@ -113,7 +137,6 @@ impl BroadcastController {
     fn stop_broadcasting(&self) -> Result<String, String> {
         self.clear_handles();
         *self.state.lock().unwrap() = BroadcastState::Stopped;
-        *self.loaded_data.lock().unwrap() = None;
         
         info!("🛑 Broadcasting stopped");
         Ok("Broadcasting stopped successfully".to_string())
@@ -129,16 +152,14 @@ impl BroadcastController {
     fn start_symbol_broadcast(&self, symbol: String, data: Vec<StockData>) -> JoinHandle<()> {
         let pubsub = self.pubsub_manager.clone();
         let state = self.state.clone();
+        let interval_secs = self.broadcast_interval_secs;
         
         tokio::spawn(async move {
-            let mut interval_timer = tokio::time::interval(std::time::Duration::from_secs(DATA_BROADCAST_INTERVAL_SECS));
             let data_len = data.len();
             
             info!("Starting broadcast for symbol: {} ({} records)", symbol, data_len);
             
             for (i, stock_data) in data.into_iter().enumerate() {
-                interval_timer.tick().await;
-                
                 // Check if we should continue broadcasting
                 let should_continue = {
                     let current_state = state.lock().unwrap();
@@ -187,6 +208,9 @@ impl BroadcastController {
                 if !should_broadcast {
                     break;
                 }
+                
+                // Use interval-based timing for now (bypassing scaled timestamp issues)
+                tokio::time::sleep(std::time::Duration::from_secs(interval_secs)).await;
                 
                 let message = crate::data::StockMessage::new(symbol.clone(), stock_data);
                 

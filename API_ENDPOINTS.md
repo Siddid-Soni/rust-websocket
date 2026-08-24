@@ -1,296 +1,415 @@
 # NSE Socket API Endpoints
 
-## Authentication Endpoints
+This document describes all available REST API endpoints for the NSE Socket server.
 
-### POST /api/login
-Generate a JWT token for a given username.
+## Base URL
+- **Development**: `http://localhost:3000/api`
+- **WebSocket**: `ws://localhost:8080`
 
-**Request:**
+## Authentication
+Most endpoints require JWT authentication. Include the token in the Authorization header:
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+## Endpoints
+
+### Authentication
+
+#### POST /api/login
+Generate a JWT token for API access.
+
+**Request Body:**
 ```json
 {
-    "username": "admin"
+  "username": "your_username"
 }
-```
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Token generated successfully",
-    "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-    "user_id": "admin",
-    "permissions": ["admin", "user"]
-}
-```
-
-**Response (Error):**
-```json
-{
-    "success": false,
-    "message": "Username cannot be empty",
-    "token": null,
-    "user_id": null,
-    "permissions": null
-}
-```
-
-**User Permissions:**
-- `admin` username gets: `["admin", "user"]` permissions
-- Any other username gets: `["user"]` permissions
-
-## Admin Broadcasting Control Endpoints
-
-⚠️ **Important:** Broadcasting does NOT start automatically. It must be started manually by an admin using these endpoints.
-
-### POST /api/start-broadcast
-Start data broadcasting from CSV files (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
-```
-
-**What it does:**
-1. Loads stock data from the `./data/` directory (all `.csv` files)
-2. Creates separate broadcasting channels for each symbol (filename becomes symbol name)
-3. Starts broadcasting data at 1-second intervals to subscribed WebSocket clients
-4. Falls back to single file mode (`./data/NIFTY.csv`) if directory loading fails
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Broadcasting started for 5 symbols with 2500 total records"
-}
-```
-
-**Response (Error):**
-```json
-{
-    "success": false,
-    "message": "Cannot execute Start while in state Running"
-}
-```
-
-### POST /api/pause-broadcast
-Pause active data broadcasting (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
-```
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Broadcasting paused successfully"
-}
-```
-
-**Response (Error):**
-```json
-{
-    "success": false,
-    "message": "Cannot execute Pause while in state Stopped"
-}
-```
-
-### POST /api/resume-broadcast
-Resume paused data broadcasting (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
-```
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Broadcasting resumed successfully"
-}
-```
-
-**Response (Error):**
-```json
-{
-    "success": false,
-    "message": "Cannot execute Resume while in state Running"
-}
-```
-
-### POST /api/stop-broadcast
-Stop data broadcasting completely (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
-```
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Broadcasting stopped successfully"
-}
-```
-
-### POST /api/restart-broadcast
-Restart data broadcasting (stop + start) (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
-```
-
-**Response (Success):**
-```json
-{
-    "success": true,
-    "message": "Broadcasting started for 5 symbols with 2500 total records"
-}
-```
-
-### GET /api/broadcast-status
-Get current broadcasting status (requires admin token).
-
-**Headers:**
-```
-Authorization: Bearer <jwt_token>
 ```
 
 **Response:**
 ```json
 {
-    "success": true,
-    "state": "Running",
-    "symbol_count": 5,
-    "total_records": 2500,
-    "message": "Broadcasting is Running with 5 symbols and 2500 total records"
+  "success": true,
+  "message": "Token generated successfully",
+  "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+  "user_id": "your_username",
+  "permissions": ["user"]
 }
 ```
 
-**Possible States:**
-- `"Stopped"` - No broadcasting active
-- `"Running"` - Broadcasting data normally  
-- `"Paused"` - Broadcasting paused (can be resumed)
+### Historical Data API 📊
 
-## Broadcasting State Machine
+#### GET /api/historical
+Get summary of all available symbols and their record counts.
 
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "symbols": ["NIFTY", "BANKNIFTY", "RELIANCE"],
+  "symbol_counts": {
+    "NIFTY": 5000,
+    "BANKNIFTY": 4800,
+    "RELIANCE": 5200
+  },
+  "total_symbols": 3,
+  "total_records": 15000
+}
 ```
-Stopped ──start──> Running ──pause──> Paused
-   ↑                 │                   │
-   │                 │                   │
-   └─────stop────────┘                   │
-   │                                     │
-   └─────────────stop──────resume────────┘
 
-restart = stop + start (from any state)
-```
+#### GET /api/historical/{symbol}
+Get historical data for a specific symbol with advanced filtering options.
 
-## Usage Examples
+**Headers:** `Authorization: Bearer <token>`
 
-### 1. Get JWT Token
+**Query Parameters:**
+- `limit` (optional): Maximum number of records to return
+- `from_date` (optional): Start date filter (YYYY-MM-DD format)
+- `to_date` (optional): End date filter (YYYY-MM-DD format)  
+- `time_period` (optional): Time period filtering
+  - `seconds` or `s`: Every record (no filtering)
+  - `minutes` or `min` or `m`: Every 60th record
+  - `hour` or `hours` or `h`: Every 3600th record
+  - `day` or `days` or `d`: One record per unique date
+
+**Examples:**
 ```bash
-curl -X POST http://localhost:3000/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin"}'
+# Get last 100 records
+GET /api/historical/NIFTY?limit=100
+
+# Get January 2024 data
+GET /api/historical/NIFTY?from_date=2024-01-01&to_date=2024-01-31
+
+# Get daily data for last 30 days
+GET /api/historical/NIFTY?time_period=day&limit=30
+
+# Get hourly data for specific date range
+GET /api/historical/NIFTY?from_date=2024-01-01&to_date=2024-01-15&time_period=hour
+
+# Combined filtering: January daily data, max 10 records
+GET /api/historical/NIFTY?from_date=2024-01-01&to_date=2024-01-31&time_period=day&limit=10
 ```
 
-### 2. Start Broadcasting
+**Response:**
+```json
+{
+  "success": true,
+  "symbol": "NIFTY",
+  "data": [
+    {
+      "date": "2024-01-01",
+      "open": 21725.70,
+      "high": 21801.45,
+      "low": 21692.95,
+      "close": 21731.40,
+      "volume": 142789654,
+      "scaled_timestamp": "2024-12-20T10:30:00Z"
+    }
+  ],
+  "total_records": 5000,
+  "filtered_records": 31,
+  "date_range": ["2024-01-01", "2024-01-31"],
+  "time_period": "day"
+}
+```
+
+### Data Broadcasting Control (Admin Only) 📡
+
+#### POST /api/start-broadcast
+Start real-time data broadcasting for the last month's data.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Broadcasting started for 3 symbols with 2790 total records"
+}
+```
+
+#### POST /api/pause-broadcast
+Pause the current broadcasting without stopping.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Broadcasting paused successfully"
+}
+```
+
+#### POST /api/resume-broadcast
+Resume paused broadcasting.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Broadcasting resumed successfully"
+}
+```
+
+#### POST /api/stop-broadcast
+Stop broadcasting completely.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Broadcasting stopped successfully"
+}
+```
+
+#### POST /api/restart-broadcast
+Restart broadcasting from the beginning.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Broadcasting started for 3 symbols with 2790 total records"
+}
+```
+
+#### GET /api/broadcast-status
+Get current broadcasting status and statistics.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "state": "Running",
+  "symbol_count": 3,
+  "total_records": 2790,
+  "message": "Broadcasting is Running with 3 symbols and 2790 total records"
+}
+```
+
+### Trading Orders 💹
+
+#### POST /api/orders
+Place a new trading order.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:**
+```json
+{
+  "symbol": "NIFTY",
+  "order_type": "Market",
+  "side": "Buy",
+  "quantity": 50,
+  "price": 21750.00
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order placed successfully",
+  "order": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "symbol": "NIFTY",
+    "order_type": "Market",
+    "side": "Buy",
+    "quantity": 50,
+    "price": 21750.00,
+    "status": "Pending",
+    "user_id": "test_user",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### GET /api/orders
+Get user's trading orders with optional filtering.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+- `symbol` (optional): Filter by symbol
+- `status` (optional): Filter by status (pending, filled, cancelled, rejected)
+- `limit` (optional): Maximum number of orders to return
+
+**Response:**
+```json
+{
+  "success": true,
+  "orders": [...],
+  "total": 15
+}
+```
+
+#### GET /api/orders/{order_id}
+Get details of a specific order.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order retrieved successfully",
+  "order": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "symbol": "NIFTY",
+    "order_type": "Market",
+    "side": "Buy",
+    "quantity": 50,
+    "price": 21750.00,
+    "status": "Filled",
+    "user_id": "test_user",
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+#### DELETE /api/orders/{order_id}
+Cancel a pending order.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:**
+```json
+{
+  "success": true,
+  "message": "Order cancelled successfully",
+  "order": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "status": "Cancelled"
+  }
+}
+```
+
+### System Health
+
+#### GET /api/health
+Check API server health status.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "service": "nse_socket_api",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+## Key Features 🚀
+
+### 1. Last Month Data Broadcasting
+- Only the last 30 days of data from each symbol is used for real-time broadcasting
+- Full historical data remains available via API endpoints
+- Configurable time scaling for realistic simulation
+
+### 2. Date Scaling (Updated)
+- **Only dates are scaled, time remains current**
+- Default scale factor: 0.01 (100x faster date progression)
+- File dates map to current date + scaled offset
+- Configurable via `TIME_SCALE_FACTOR` environment variable
+
+### 3. Advanced Data Filtering
+- **Date Range**: Filter by start and end dates
+- **Time Period**: Sample data at different intervals (seconds, minutes, hours, days)
+- **Combined Filtering**: Use multiple filters together
+- **Limit**: Control maximum number of records returned
+
+### 4. Real-time Broadcasting
+- WebSocket-based real-time data streaming
+- Pub/Sub pattern for efficient delivery
+- Scaled timestamps for realistic timing
+- Admin controls for start/stop/pause/resume
+
+## Configuration
+
+### Environment Variables
 ```bash
-TOKEN=$(curl -s -X POST http://localhost:3000/api/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "admin"}' | jq -r '.token')
+# Server Configuration
+BIND_ADDRESS=0.0.0.0:8080          # WebSocket server address
+API_BIND_ADDRESS=0.0.0.0:3000      # HTTP API server address
+RUST_LOG=info                       # Log level
 
-curl -X POST http://localhost:3000/api/start-broadcast \
-  -H "Authorization: Bearer $TOKEN"
+# Data Configuration  
+DATA_DIR=./data                     # Directory containing CSV files
+TIME_SCALE_FACTOR=0.01             # Date scaling factor (0.01 = 100x faster)
+BROADCAST_INTERVAL_SECS=1          # Fallback interval for broadcasting
+
+# JWT Configuration
+JWT_SECRET=your-secret-key          # JWT signing secret (min 32 chars)
 ```
 
-### 3. Check Broadcasting Status
-```bash
-curl -X GET http://localhost:3000/api/broadcast-status \
-  -H "Authorization: Bearer $TOKEN"
+### Time Scale Examples
+- `TIME_SCALE_FACTOR=1.0`: Real-time date progression
+- `TIME_SCALE_FACTOR=0.1`: 10x faster date progression  
+- `TIME_SCALE_FACTOR=0.01`: 100x faster date progression (default)
+- `TIME_SCALE_FACTOR=0.001`: 1000x faster date progression
+
+## WebSocket API
+
+### Connection
+```
+ws://localhost:8080/ws              # Regular users
+ws://localhost:8080/admin           # Admin users (order events)
 ```
 
-### 4. Pause Broadcasting
-```bash
-curl -X POST http://localhost:3000/api/pause-broadcast \
-  -H "Authorization: Bearer $TOKEN"
+### Authentication
+Include JWT token in:
+- Header: `Authorization: Bearer <token>`
+- Query parameter: `?token=<token>`
+
+### Message Format
+```json
+{
+  "type": "subscribe",
+  "symbol": "NIFTY"
+}
 ```
 
-### 5. Resume Broadcasting
-```bash
-curl -X POST http://localhost:3000/api/resume-broadcast \
-  -H "Authorization: Bearer $TOKEN"
+## Error Handling
+
+All endpoints return standardized error responses:
+
+```json
+{
+  "success": false,
+  "message": "Error description",
+  "error_code": "INVALID_REQUEST"
+}
 ```
 
-### 6. Stop Broadcasting
-```bash
-curl -X POST http://localhost:3000/api/stop-broadcast \
-  -H "Authorization: Bearer $TOKEN"
+## Rate Limiting
+
+- API endpoints: No rate limiting currently
+- WebSocket: Connection-based limits
+- Historical data: Large queries may take longer to process
+
+## Data Format
+
+### Stock Data Structure
+```json
+{
+  "date": "2024-01-15",              # Original file date (YYYY-MM-DD)
+  "open": 21725.70,                  # Opening price
+  "high": 21801.45,                  # High price
+  "low": 21692.95,                   # Low price  
+  "close": 21731.40,                 # Closing price
+  "volume": 142789654,               # Volume
+  "scaled_timestamp": "2024-12-20T10:30:00Z"  # Scaled timestamp for broadcasting
+}
 ```
 
-### 7. Restart Broadcasting
-```bash
-curl -X POST http://localhost:3000/api/restart-broadcast \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-## Data Directory Structure
-
-For multi-symbol broadcasting, organize your data like this:
-```
-data/
-  ├── NIFTY.csv      # Will broadcast as "NIFTY" symbol
-  ├── RELIANCE.csv   # Will broadcast as "RELIANCE" symbol  
-  ├── TCS.csv        # Will broadcast as "TCS" symbol
-  └── INFY.csv       # Will broadcast as "INFY" symbol
-```
-
-**CSV Format:** Each file should have columns: `date,open,high,low,close,volume`
-
-## Broadcasting Behavior
-
-- **Default State:** Stopped (no automatic startup)
-- **Interval:** Data broadcasts every 1 second per symbol
-- **Concurrent:** All symbols broadcast simultaneously 
-- **WebSocket Integration:** Data goes to PubSub system for WebSocket subscribers
-- **Stateful:** Maintains state across pause/resume/stop operations
-- **Admin Control:** Only admin users can control broadcasting
-
-## Server Configuration
-
-The API server runs on port 3000 by default. You can configure this with the `API_BIND_ADDRESS` environment variable:
-
-```bash
-export API_BIND_ADDRESS="127.0.0.1:3000"
-```
-
-## JWT Configuration
-
-JWT tokens expire after 24 hours. You can configure the JWT secret with the `JWT_SECRET` environment variable:
-
-```bash
-export JWT_SECRET="your-super-secret-key-at-least-32-characters-long"
-```
-
-**⚠️ Important:** Always use a strong, unique JWT secret in production!
-
-## Available Endpoints Summary
-
-| Method | Endpoint | Auth Required | Admin Only | Description |
-|--------|----------|---------------|------------|-------------|
-| POST | `/api/login` | No | No | Get JWT token for username |
-| POST | `/api/start-broadcast` | Yes | Yes | Start data broadcasting |
-| POST | `/api/pause-broadcast` | Yes | Yes | Pause active broadcasting |
-| POST | `/api/resume-broadcast` | Yes | Yes | Resume paused broadcasting |
-| POST | `/api/stop-broadcast` | Yes | Yes | Stop broadcasting completely |
-| POST | `/api/restart-broadcast` | Yes | Yes | Restart broadcasting (stop + start) |
-| GET | `/api/broadcast-status` | Yes | Yes | Get current broadcasting status |
-| GET | `/api/health` | No | No | Health check |
-| POST | `/api/orders` | Yes | No | Place trading order |
-| GET | `/api/orders` | Yes | No | Get user's orders |
-| GET | `/api/orders/:id` | Yes | No | Get specific order |
-| DELETE | `/api/orders/:id` | Yes | No | Cancel order | 
+The `scaled_timestamp` field is added during data preparation and represents when this data point should be broadcast in the scaled timeline. 

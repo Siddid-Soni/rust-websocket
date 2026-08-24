@@ -104,6 +104,18 @@ impl WebSocketHandler {
         self.handle_websocket_connection_with_pubsub(ws_stream, rx, claims, pubsub).await;
     }
     
+    pub async fn handle_authenticated_connection_with_pubsub(
+        self,
+        ws_stream: WebSocketStream<TcpStream>,
+        rx: broadcast::Receiver<String>,
+        claims: Claims,
+        pubsub: Arc<PubSubManager>,
+    ) {
+        // Handle pre-authenticated WebSocket connection with pubsub
+        // This is used when authentication is already done during handshake
+        self.handle_websocket_connection_with_pubsub(ws_stream, rx, claims, pubsub).await;
+    }
+    
     fn authenticate_request(
         &self,
         req: &Request, 
@@ -554,29 +566,6 @@ impl WebSocketHandler {
 
             let _ = close_tx.send(()).await;
         })
-    }
-
-    pub async fn handle_websocket_connection_direct(
-        self,
-        ws_stream: WebSocketStream<TcpStream>,
-        rx: broadcast::Receiver<String>,
-        pubsub: Arc<PubSubManager>,
-    ) {
-        // For direct connections, we need to do authentication here since handshake is done
-        // Extract token from WebSocket connection (this won't work as handshake is already done)
-        // For now, we'll skip authentication since it should be handled by the router
-        
-        // Create a dummy claims for now - this is not ideal but works for path routing
-        let dummy_claims = Claims {
-            sub: "unknown".to_string(),
-            jti: uuid::Uuid::new_v4().to_string(),
-            exp: (chrono::Utc::now() + chrono::Duration::hours(1)).timestamp(),
-            iat: chrono::Utc::now().timestamp(),
-            user_id: "unknown".to_string(),
-            permissions: vec!["read_data".to_string(), "websocket_connect".to_string()],
-        };
-        
-        self.handle_websocket_connection_with_pubsub(ws_stream, rx, dummy_claims, pubsub).await;
     }
 }
 

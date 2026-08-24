@@ -36,6 +36,10 @@ client.on_ticks = on_ticks
 client.ws_connect()
 client.subscribe_feed("NIFTY")
 
+# Get historical data
+historical_data = client.get_historical_data("NIFTY", limit=100)
+daily_data = client.get_historical_data("NIFTY", time_period="day", limit=30)
+
 # Place orders
 order = client.place_order("NIFTY", "buy", "market", 100)
 
@@ -116,6 +120,249 @@ The `on_ticks` callback receives data in this format:
     "timestamp": "2024-01-15T10:30:00Z",
     "datetime": datetime.now()  # Python datetime object
 }
+```
+
+## 📊 Historical Data API
+
+The NSE client now provides comprehensive historical data access with advanced filtering, date scaling, and time period sampling capabilities.
+
+### Getting Historical Data Summary
+
+```python
+# Get overview of available data
+summary = client.get_historical_summary()
+if summary:
+    print(f"Available symbols: {summary['symbols']}")
+    print(f"Total records: {summary['total_records']}")
+    print(f"Symbol counts: {summary['symbol_counts']}")
+
+# Quick way to get available symbols
+symbols = client.get_available_symbols()
+print(f"Available: {symbols}")
+```
+
+### Basic Historical Data Queries
+
+```python
+# Get last 100 records for a symbol
+data = client.get_historical_data("NIFTY", limit=100)
+if data and data['success']:
+    records = data['data']
+    print(f"Retrieved {len(records)} records")
+    print(f"Date range: {data['date_range']}")
+
+# Simple interface (returns just the data array)
+records = client.get_historical_data_simple("NIFTY", limit=50)
+for record in records:
+    print(f"{record['date']}: Close ₹{record['close']}")
+```
+
+### Clean Historical Data (Essential Fields Only)
+
+For applications that need only the core OHLCV data without any metadata:
+
+```python
+# Get clean data with only essential fields: date, open, high, low, close, volume
+clean_data = client.get_historical_data_clean("NIFTY", limit=10)
+
+# Returns exactly: [{"date": "2025-06-21", "open": 21500.0, "high": 21650.0, "low": 21480.0, "close": 21620.0, "volume": 1500000}, ...]
+for record in clean_data:
+    print(f"{record['date']}: O={record['open']:.2f} H={record['high']:.2f} L={record['low']:.2f} C={record['close']:.2f} V={record['volume']:,}")
+
+# Clean data with filtering
+clean_data = client.get_historical_data_clean(
+    "INDIGO",
+    time_period="minutes",
+    from_date="2025-06-19",
+    to_date="2025-06-19",
+    limit=10
+)
+```
+
+### Date Range Filtering with Date Scaling
+
+The system supports **relative date queries** that work with the server's date scaling feature:
+
+```python
+from datetime import date, timedelta
+
+# Query for yesterday's data (relative to current broadcast timeline)
+yesterday = date.today() - timedelta(days=1)
+data = client.get_historical_data("NIFTY", from_date=yesterday)
+
+# Query for last week's data
+week_ago = date.today() - timedelta(days=7)
+data = client.get_historical_data(
+    "NIFTY",
+    from_date=week_ago,
+    to_date=yesterday,
+    limit=100
+)
+
+# Date range with string format
+data = client.get_historical_data(
+    "NIFTY",
+    from_date="2025-06-15",  # These are scaled dates
+    to_date="2025-06-20",
+    limit=50
+)
+```
+
+### Time Period Filtering
+
+Sample data at different time intervals:
+
+```python
+# Daily data (one record per day)
+daily_data = client.get_historical_data(
+    "NIFTY",
+    time_period="day",
+    limit=30
+)
+
+# Hourly sampling 
+hourly_data = client.get_historical_data(
+    "NIFTY", 
+    time_period="hour",
+    limit=24
+)
+
+# Minute-level sampling
+minute_data = client.get_historical_data(
+    "NIFTY",
+    time_period="minutes",  # Can also use "min" or "m"
+    limit=60
+)
+```
+
+### Combined Filtering
+
+Use multiple filters together for precise data selection:
+
+```python
+from datetime import date, timedelta
+
+# Get daily data for the last 2 weeks
+two_weeks_ago = date.today() - timedelta(days=14)
+yesterday = date.today() - timedelta(days=1)
+
+data = client.get_historical_data(
+    "NIFTY",
+    from_date=two_weeks_ago,
+    to_date=yesterday,
+    time_period="day",
+    limit=10
+)
+
+if data and data['success']:
+    print(f"Retrieved {data['filtered_records']} daily records")
+    print(f"Date range: {data['date_range']}")
+    for record in data['data']:
+        print(f"{record['date']}: ₹{record['close']:.2f} (original: {record['original_date']})")
+```
+
+### Historical Data Response Format
+
+```python
+{
+    "success": true,
+    "symbol": "NIFTY",
+    "data": [
+        {
+            "date": "2025-06-15",         # Scaled date (for display)
+            "open": 21725.70,
+            "high": 21801.45,
+            "low": 21692.95,
+            "close": 21731.40,
+            "volume": 142789654,
+            "original_date": "2024-10-04"  # Original historical date
+        }
+    ],
+    "total_records": 5000,              # Total records in symbol
+    "filtered_records": 10,             # Records after filtering
+    "date_range": ["2025-06-15", "2025-06-20"],  # Scaled date range
+    "time_period": "day"
+}
+```
+
+### Error Handling
+
+```python
+from nse_client import HistoricalDataError, AuthenticationError
+
+try:
+    data = client.get_historical_data("NIFTY", limit=100)
+except AuthenticationError:
+    print("❌ Authentication required for historical data")
+except HistoricalDataError as e:
+    print(f"❌ Historical data error: {e}")
+except Exception as e:
+    print(f"❌ Unexpected error: {e}")
+```
+
+## 📡 Admin Broadcast Controls
+
+Admin users can control the real-time data broadcasting system:
+
+### Broadcast Status
+
+```python
+# Get current broadcast status (admin only)
+try:
+    status = client.get_broadcast_status()
+    if status:
+        print(f"State: {status['state']}")
+        print(f"Symbols: {status['symbol_count']}")
+        print(f"Records: {status['total_records']}")
+except AdminError as e:
+    print(f"Admin access required: {e}")
+```
+
+### Broadcast Control Operations
+
+```python
+from nse_client import AdminError, AuthenticationError
+
+try:
+    # Start broadcasting
+    if client.start_broadcast():
+        print("✅ Broadcasting started")
+    
+    # Pause broadcasting
+    if client.pause_broadcast():
+        print("⏸️ Broadcasting paused")
+    
+    # Resume broadcasting
+    if client.resume_broadcast():
+        print("▶️ Broadcasting resumed")
+    
+    # Restart from beginning
+    if client.restart_broadcast():
+        print("🔄 Broadcasting restarted")
+    
+    # Stop broadcasting
+    if client.stop_broadcast():
+        print("⏹️ Broadcasting stopped")
+        
+except AdminError as e:
+    print(f"❌ Admin operation failed: {e}")
+except AuthenticationError:
+    print("❌ Admin authentication required")
+```
+
+### Admin Authentication
+
+```python
+# Authenticate as admin
+client = NSEClient("ws://localhost:8080", "http://localhost:3000")
+if client.authenticate("admin_user"):
+    print("✅ Admin authenticated")
+    
+    # Now admin operations will work
+    status = client.get_broadcast_status()
+    client.start_broadcast()
+else:
+    print("❌ Admin authentication failed")
 ```
 
 ## 📦 Order Management

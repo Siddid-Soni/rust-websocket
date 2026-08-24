@@ -12,9 +12,10 @@ use tokio::sync::broadcast;
 use tokio::time::interval;
 use log::{info, error};
 use tower_http::cors::CorsLayer;
+use chrono::{Utc, NaiveDate};
 
 use crate::config::{Config, CLEANUP_INTERVAL_SECS, BROADCAST_CHANNEL_SIZE};
-use crate::data::{PubSubManager, BroadcastController};
+use crate::data::{PubSubManager, BroadcastController, DataLoader, HistoricalDataManager};
 use crate::auth::{SessionManager, extract_jwt_from_request, JwtGenerator};
 use crate::websocket::{WebSocketHandler, AdminWebSocketHandler, AdminOrderEvent};
 use crate::trading::OrderManager;
@@ -79,8 +80,29 @@ async fn handle_websocket_connection_with_routing(
             }
             "/ws" => {
                 is_admin = false;
-                // For normal WebSocket, we'll let the existing handler do the auth
-                Ok(response)
+                // Authenticate regular WebSocket connections
+                if let Some(token) = extract_jwt_from_request(req) {
+                    match session_manager.validate_jwt(&token) {
+                        Ok(claims) => {
+                            auth_claims = Some(claims);
+                            info!("WebSocket authenticated from {}", peer_addr);
+                            Ok(response)
+                        }
+                        Err(e) => {
+                            warn!("WebSocket authentication failed from {}: {}", peer_addr, e);
+                            Err(Response::builder()
+                                .status(StatusCode::UNAUTHORIZED)
+                                .body(Some(e))
+                                .unwrap())
+                        }
+                    }
+                } else {
+                    warn!("WebSocket missing token from {}", peer_addr);
+                    Err(Response::builder()
+                        .status(StatusCode::UNAUTHORIZED)
+                        .body(Some("Missing Authorization header or token parameter".to_string()))
+                        .unwrap())
+                }
             }
             _ => {
                 warn!("Unknown WebSocket path '{}' from {}", path, peer_addr);
@@ -107,10 +129,14 @@ async fn handle_websocket_connection_with_routing(
             handler.handle_admin_websocket_direct(ws_stream, admin_rx, claims).await;
         }
     } else {
-        info!("Routing to normal WebSocket handler for {}", peer_addr);
-        // Handle normal WebSocket with already established connection
-        let handler = WebSocketHandler::new(session_manager, peer_addr);
-        handler.handle_websocket_connection_direct(ws_stream, rx, pubsub).await;
+        if let Some(claims) = auth_claims {
+            info!("Routing to authenticated WebSocket handler for {}", peer_addr);
+            // Handle normal WebSocket with authenticated connection
+            let handler = WebSocketHandler::new(session_manager, peer_addr);
+            handler.handle_authenticated_connection_with_pubsub(ws_stream, rx, claims, pubsub).await;
+        } else {
+            error!("No authentication claims found for regular WebSocket from {}", peer_addr);
+        }
     }
 }
 
@@ -131,10 +157,65 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err(e.into());
     }
 
+    // Load historical data from CSV files
+    info!("📚 Loading historical data from CSV files...");
+    let all_symbol_data = match DataLoader::load_multiple_symbols(&config.data_dir) {
+        Ok(data) => {
+            info!("✅ Successfully loaded historical data for {} symbols", data.len());
+            data
+        }
+        Err(e) => {
+            error!("❌ Failed to load historical data: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Prepare broadcast data (last two months only, no time scaling)
+    let (broadcast_data, all_data) = match DataLoader::prepare_broadcast_data(all_symbol_data, 1.0) {
+        Ok((broadcast, all)) => {
+            let broadcast_symbols = broadcast.len();
+            let broadcast_records: usize = broadcast.values().map(|v| v.len()).sum();
+            let total_records: usize = all.values().map(|v| v.len()).sum();
+            
+            info!("📊 Prepared broadcast data: {} symbols, {} records (last two months)", broadcast_symbols, broadcast_records);
+            info!("📚 Total historical data: {} symbols, {} records", all.len(), total_records);
+            (broadcast, all)
+        }
+        Err(e) => {
+            error!("❌ Failed to prepare broadcast data: {}", e);
+            return Err(e);
+        }
+    };
+
+    // Initialize historical data manager
+    let mut historical_data_manager = HistoricalDataManager::new(all_data);
+    
+    // Set up date mapping for relative date queries
+    // Find the earliest date in broadcast data to set up mapping
+    if let Some(first_symbol_data) = broadcast_data.values().next() {
+        if let Some(first_record) = first_symbol_data.first() {
+            let current_date = chrono::Utc::now().date_naive();
+            // Map the first available historical date to yesterday, so today is the second day
+            // This ensures yesterday's data is available
+            let yesterday = current_date - chrono::Duration::days(1);
+            if let Ok(historical_start) = NaiveDate::parse_from_str(&first_record.date, "%Y-%m-%d") {
+                historical_data_manager.set_date_mapping(yesterday, historical_start);
+                info!("🗓️  Date mapping: Yesterday ({}) = Historical start ({})", yesterday, historical_start);
+                info!("🗓️  This means today ({}) = Historical second day", current_date);
+            }
+        }
+    }
+    
+    let historical_data_manager = Arc::new(historical_data_manager);
+
     // Initialize managers
     let session_manager: SessionManager = SessionManager::new(&config.jwt_secret);
     let pubsub_manager = Arc::new(PubSubManager::new(BROADCAST_CHANNEL_SIZE));
-    let broadcast_controller = Arc::new(BroadcastController::new(pubsub_manager.clone()));
+    let broadcast_controller = Arc::new(BroadcastController::new_with_data(
+        pubsub_manager.clone(),
+        broadcast_data,
+        config.broadcast_interval_secs
+    ));
     
     // Initialize broadcast channel for backwards compatibility
     let (tx, _rx) = broadcast::channel(BROADCAST_CHANNEL_SIZE);
@@ -148,6 +229,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // NOTE: Broadcasting is now controlled by admin API endpoints
     // No automatic startup of broadcasting - it's controlled via /api/start-broadcast
     info!("📊 Broadcasting system ready - use /api/start-broadcast to begin data streaming");
+    info!("🔍 Historical data API ready - use /api/historical to browse data");
 
     // Start background tasks
     start_background_tasks(
@@ -164,6 +246,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         jwt_generator: Arc::new(JwtGenerator::new(&config.jwt_secret)),
         pubsub_manager: pubsub_manager.clone(),
         broadcast_controller,
+        historical_data_manager,
     };
     
     let api_router = create_api_router(api_state)

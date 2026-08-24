@@ -13,7 +13,7 @@ use log::{info, warn, error};
 use crate::trading::{OrderManager, OrderRequest, OrderResponse, OrderListResponse, OrderStatus};
 use crate::auth::{SessionManager, JwtGenerator};
 use crate::auth::Claims;
-use crate::data::{PubSubManager, BroadcastController, BroadcastCommand, BroadcastState};
+use crate::data::{PubSubManager, BroadcastController, BroadcastCommand, BroadcastState, HistoricalDataManager, HistoricalDataResponse};
 
 
 #[derive(Clone)]
@@ -23,6 +23,7 @@ pub struct ApiState {
     pub jwt_generator: Arc<JwtGenerator>,
     pub pubsub_manager: Arc<PubSubManager>,
     pub broadcast_controller: Arc<BroadcastController>,
+    pub historical_data_manager: Arc<HistoricalDataManager>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +31,14 @@ pub struct OrderQuery {
     pub symbol: Option<String>,
     pub status: Option<String>,
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct HistoricalDataQuery {
+    pub limit: Option<usize>,
+    pub from_date: Option<String>,  // Format: YYYY-MM-DD
+    pub to_date: Option<String>,    // Format: YYYY-MM-DD
+    pub time_period: Option<String>, // Options: seconds, minutes, hour, day
 }
 
 // Request/Response structures for authentication
@@ -569,6 +578,87 @@ pub async fn broadcast_status(
     }))
 }
 
+// GET /api/historical/{symbol} - Get historical data for a symbol (authenticated users)
+pub async fn get_historical_data(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+    Path(symbol): Path<String>,
+    Query(query): Query<HistoricalDataQuery>,
+) -> Result<Json<HistoricalDataResponse>, (StatusCode, Json<HistoricalDataResponse>)> {
+    // Authenticate user (no admin privileges required)
+    let _claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(HistoricalDataResponse {
+                success: false,
+                symbol: symbol.clone(),
+                data: Vec::new(),
+                total_records: 0,
+                filtered_records: 0,
+                date_range: None,
+                time_period: None,
+            }))
+        })?;
+
+    // Get historical data
+    let response = state.historical_data_manager.get_symbol_data(
+        &symbol, 
+        query.limit,
+        query.from_date.as_deref(),
+        query.to_date.as_deref(),
+        query.time_period.as_deref(),
+    );
+    
+    if response.success {
+        info!("Retrieved {} filtered records (from {} total) for symbol: {}", 
+              response.filtered_records, response.total_records, symbol);
+        Ok(Json(response))
+    } else {
+        warn!("Historical data not found for symbol: {}", symbol);
+        Err((StatusCode::NOT_FOUND, Json(response)))
+    }
+}
+
+// GET /api/historical - Get available symbols and their record counts (authenticated users)
+#[derive(Debug, Serialize)]
+pub struct SymbolsSummaryResponse {
+    pub success: bool,
+    pub symbols: Vec<String>,
+    pub symbol_counts: std::collections::HashMap<String, usize>,
+    pub total_symbols: usize,
+    pub total_records: usize,
+}
+
+pub async fn get_symbols_summary(
+    State(state): State<ApiState>,
+    headers: HeaderMap,
+) -> Result<Json<SymbolsSummaryResponse>, (StatusCode, Json<SymbolsSummaryResponse>)> {
+    // Authenticate user (no admin privileges required)
+    let _claims = authenticate_request(&headers, &state.session_manager)
+        .map_err(|(status, msg)| {
+            (status, Json(SymbolsSummaryResponse {
+                success: false,
+                symbols: Vec::new(),
+                symbol_counts: std::collections::HashMap::new(),
+                total_symbols: 0,
+                total_records: 0,
+            }))
+        })?;
+
+    let symbols = state.historical_data_manager.get_available_symbols();
+    let symbol_counts = state.historical_data_manager.get_symbols_summary();
+    let total_records: usize = symbol_counts.values().sum();
+
+    info!("Retrieved summary for {} symbols with {} total records", symbols.len(), total_records);
+
+    Ok(Json(SymbolsSummaryResponse {
+        success: true,
+        symbols: symbols.clone(),
+        symbol_counts,
+        total_symbols: symbols.len(),
+        total_records,
+    }))
+}
+
 // GET /api/health - Health check endpoint
 pub async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({
@@ -589,6 +679,8 @@ pub fn create_api_router(state: ApiState) -> Router {
         .route("/stop-broadcast", post(stop_broadcast))
         .route("/restart-broadcast", post(restart_broadcast))
         .route("/broadcast-status", get(broadcast_status))
+        .route("/historical", get(get_symbols_summary))
+        .route("/historical/:symbol", get(get_historical_data))
         .route("/orders", post(place_order))
         .route("/orders", get(get_orders))
         .route("/orders/:order_id", get(get_order))
